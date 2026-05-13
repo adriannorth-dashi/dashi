@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -52,19 +54,21 @@ type rpcRequest struct {
 // txKindBytes is Base64-encoded. sender is a Sui address (0x + 64 hex chars).
 // Returns the sponsored TransactionData bytes and a sponsorship ID.
 func (s *ShinamiClient) SponsorTransaction(ctx context.Context, txKindBytes, sender string) (*SponsorshipResult, error) {
+	// Shinami docs: params = [txKindBytes, senderAddress]
+	// gasBudget omitted — Shinami derives it from the fund configuration.
 	payload := rpcRequest{
 		JSONRPC: "2.0",
 		ID:      1,
 		Method:  "gas_sponsorTransactionBlock",
-		// gasBudget of 5_000_000 MIST (0.005 SUI) covers virtually all transactions.
-		// Shinami will use the actual gas consumed; the budget is a ceiling.
-		Params: []interface{}{txKindBytes, sender, 5_000_000},
+		Params:  []interface{}{txKindBytes, sender},
 	}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
+
+	log.Printf("→ Shinami request: %s", body)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -79,28 +83,43 @@ func (s *ShinamiClient) SponsorTransaction(ctx context.Context, txKindBytes, sen
 	}
 	defer resp.Body.Close()
 
+	// Read the full body so we can log it before decoding.
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read shinami response: %w", err)
+	}
+	log.Printf("← Shinami response (HTTP %d): %s", resp.StatusCode, rawBody)
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("shinami returned HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("shinami returned HTTP %d: %s", resp.StatusCode, rawBody)
 	}
 
-	// Shinami JSON-RPC response: result.txBytes + result.sponsorshipId
+	// Shinami JSON-RPC response fields:
+	//   txBytes       — sponsored TransactionData, Base64-encoded
+	//   txDigest      — Shinami's pre-computed digest (used as sponsorshipId)
+	//   signature     — Shinami's signature over the transaction
+	//   expireAtTime  — Unix ms after which this sponsorship expires
 	var rpcResp struct {
 		Result *struct {
-			TxBytes       string `json:"txBytes"`
-			SponsorshipID string `json:"sponsorshipId"`
+			TxBytes      string `json:"txBytes"`
+			TxDigest     string `json:"txDigest"`
+			Signature    string `json:"signature"`
+			ExpireAtTime int64  `json:"expireAtTime"`
 		} `json:"result"`
 		Error *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
+			Code    int             `json:"code"`
+			Message string          `json:"message"`
+			Data    json.RawMessage `json:"data"`
 		} `json:"error"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+	if err := json.Unmarshal(rawBody, &rpcResp); err != nil {
 		return nil, fmt.Errorf("decode shinami response: %w", err)
 	}
 
 	if rpcResp.Error != nil {
-		return nil, fmt.Errorf("shinami error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
+		return nil, fmt.Errorf("shinami error %d: %s (details: %s)",
+			rpcResp.Error.Code, rpcResp.Error.Message, rpcResp.Error.Data)
 	}
 
 	if rpcResp.Result == nil {
@@ -109,6 +128,7 @@ func (s *ShinamiClient) SponsorTransaction(ctx context.Context, txKindBytes, sen
 
 	return &SponsorshipResult{
 		SponsoredTransaction: rpcResp.Result.TxBytes,
-		SponsorshipID:        rpcResp.Result.SponsorshipID,
+		// Shinami uses txDigest as the unique sponsorship identifier
+		SponsorshipID: rpcResp.Result.TxDigest,
 	}, nil
 }
