@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed tz database so the binary works without system tzdata
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
