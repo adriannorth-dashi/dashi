@@ -7,7 +7,6 @@
 *.test
 *.out
 /vendor/
-go.sum
 
 # Go workspace
 /go.work
