@@ -6,7 +6,6 @@
 *.dylib
 *.test
 *.out
-/vendor/
 
 # Go workspace
 /go.work
@@ -44,3 +43,7 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# sui-gas-pool config — contains private key after setup, never commit
+config/sponsor.key
+config/gas-pool.yaml

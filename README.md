@@ -206,13 +206,67 @@ PORT=8080
 
 ---
 
+## Phase 2 Setup (sui-gas-pool)
+
+Phase 2 replaces Shinami with [sui-gas-pool](https://github.com/MystenLabs/sui-gas-pool)
+by Mysten Labs — fully self-contained, no third-party dependency.
+
+### Step 1: Generate sponsor wallet
+
+```bash
+./scripts/setup-sponsor-wallet.sh
+```
+
+The script generates an Ed25519 keypair, writes it into `config/gas-pool.yaml`,
+and prints the sponsor address. **Never commit `config/gas-pool.yaml` after this step.**
+
+### Step 2: Fund the sponsor wallet
+
+```bash
+curl -X POST https://faucet.testnet.sui.io/v1/gas \
+  -H "Content-Type: application/json" \
+  -d '{"FixedAmountRequest":{"recipient":"0xYOUR_SPONSOR_ADDRESS"}}'
+```
+
+The gas pool needs at least **1 SUI** to start splitting coins and sponsoring transactions.
+
+### Step 3: Set the auth token
+
+In `.env`:
+```env
+GASPOOL_AUTH_TOKEN=your_secure_random_token   # openssl rand -hex 32
+```
+
+The same token is used by `docker-compose.yml` as `GAS_STATION_AUTH` for the gas pool container.
+
+### Step 4: Build and start
+
+```bash
+# First build takes 20-40 min (compiles sui-gas-station from source)
+docker compose build gaspool
+
+docker compose up -d
+```
+
+### Step 5: Test
+
+```bash
+curl http://localhost:8080/health
+# → {"status":"ok","network":"testnet","version":"1.0.0"}
+
+node test.mjs
+# → {"sponsoredTransaction":"...","sponsorshipId":"<txDigest>","feeInfo":{...}}
+```
+
+---
+
 ## Roadmap
 
 - [x] Phase 1 — API Server with Shinami backend
 - [x] Phase 1 — Docker Compose (one command setup)
 - [x] Phase 1 — PostgreSQL transaction logging
 - [x] Phase 1 — API Key authentication
-- [ ] Phase 2 — `sui-gas-pool` integration (remove Shinami dependency)
+- [x] Phase 2 — `sui-gas-pool` integration (remove Shinami dependency)
 - [ ] Phase 2 — Multi-tenant API keys from database
 - [ ] Phase 2 — Rate limiting per customer
 - [ ] Phase 3 — On-chain fee collection to operator wallet

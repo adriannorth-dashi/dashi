@@ -1,0 +1,29 @@
+# Stage 1: Build sui-gas-station from source
+# First build takes 20-40 min due to Sui git dependencies (~500 MB of Rust code).
+# Subsequent builds are cached by Docker layer caching.
+FROM rust:1.90-bullseye AS builder
+
+RUN apt-get update && apt-get install -y \
+    cmake clang pkg-config libssl-dev git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Clone with --depth 1 to avoid downloading full git history.
+RUN git clone --depth 1 https://github.com/MystenLabs/sui-gas-pool .
+
+RUN cargo build --release --bin sui-gas-station
+
+# Stage 2: Minimal runtime image
+FROM debian:bullseye-slim
+
+# libjemalloc-dev: recommended allocator for the gas station binary
+RUN apt-get update && apt-get install -y \
+    ca-certificates libjemalloc-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/sui-gas-station /usr/local/bin/sui-gas-station
+
+EXPOSE 9527 9184
+
+CMD ["sui-gas-station", "--config-path", "/config/gas-pool.yaml"]

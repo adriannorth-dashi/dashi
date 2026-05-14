@@ -9,6 +9,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      gaspool:
+        condition: service_started
+
+  gaspool:
+    build:
+      context: .
+      dockerfile: Dockerfile.gaspool
+    volumes:
+      - ./config:/config:ro
+    environment:
+      # Bearer token for the gas-pool REST API.
+      # Must match GASPOOL_AUTH_TOKEN in .env.
+      GAS_STATION_AUTH: ${GASPOOL_AUTH_TOKEN}
+    network_mode: host
+    restart: unless-stopped
+    # gaspool is not exposed externally — it listens on 127.0.0.1:9527
+    # and is only reachable by the api container via the host network.
 
   postgres:
     image: postgres:16-alpine

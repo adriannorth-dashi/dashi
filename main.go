@@ -18,25 +18,27 @@ const version = "1.0.0"
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {
-	Port        string
-	Network     string
-	RPCURL      string
-	ShinamiKey  string
-	APIKey      string
-	DatabaseURL string
-	RedisURL    string
+	Port             string
+	Network          string
+	RPCURL           string
+	GasPoolURL       string // Phase 2: sui-gas-pool base URL
+	GasPoolAuthToken string // Phase 2: GAS_STATION_AUTH bearer token
+	APIKey           string
+	DatabaseURL      string
+	RedisURL         string
 }
 
 func loadConfig() Config {
 	_ = godotenv.Load()
 	return Config{
-		Port:        getEnv("PORT", "8080"),
-		Network:     getEnv("SUI_NETWORK", "testnet"),
-		RPCURL:      getEnv("SUI_RPC_URL", "https://fullnode.testnet.sui.io:443"),
-		ShinamiKey:  getEnv("SHINAMI_GAS_STATION_KEY", ""),
-		APIKey:      getEnv("API_KEY", ""),
-		DatabaseURL: getEnv("DATABASE_URL", ""),
-		RedisURL:    getEnv("REDIS_URL", "redis://redis:6379"),
+		Port:             getEnv("PORT", "8080"),
+		Network:          getEnv("SUI_NETWORK", "testnet"),
+		RPCURL:           getEnv("SUI_RPC_URL", "https://fullnode.testnet.sui.io:443"),
+		GasPoolURL:       getEnv("GASPOOL_URL", "http://127.0.0.1:9527"),
+		GasPoolAuthToken: getEnv("GASPOOL_AUTH_TOKEN", ""),
+		APIKey:           getEnv("API_KEY", ""),
+		DatabaseURL:      getEnv("DATABASE_URL", ""),
+		RedisURL:         getEnv("REDIS_URL", "redis://redis:6379"),
 	}
 }
 
@@ -66,7 +68,7 @@ func main() {
 
 	h := &Handlers{
 		db:      db,
-		shinami: NewShinamiClient(cfg.ShinamiKey),
+		shinami: NewShinamiClient(cfg.GasPoolURL, cfg.GasPoolAuthToken),
 		sui:     NewSuiClient(cfg.RPCURL),
 		cfg:     cfg,
 	}
