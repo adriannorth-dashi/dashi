@@ -28,6 +28,7 @@ pnpm-debug.log*
 dist/
 build/
 out/
+/dashi
 
 # Environment variables
 .env
