@@ -47,9 +47,9 @@ console.log('Connected to Sui Testnet');
 console.log(`Sender: ${SENDER}\n`);
 
 // ── 2. Make sure sender has SUI coins ──────────────────────────────────────
-// Sponsored transactions: the sponsor (Shinami) provides gas.
+// Sponsored transactions: the sponsor (Dashi) provides gas.
 // But the sender's coin objects must be used in the TX body — tx.gas is
-// owned by Shinami and is NOT available as a transaction argument.
+// owned by the sponsor and is NOT available as a transaction argument.
 let coins = await getCoins(SENDER);
 console.log(`Sender has ${coins.length} SUI coin(s).`);
 

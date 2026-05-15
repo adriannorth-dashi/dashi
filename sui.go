@@ -108,8 +108,7 @@ func (s *SuiClient) GetTransactionStatus(ctx context.Context, digest string) (st
 }
 
 // GetBalance returns the SUI balance of the gas fund.
-// Phase 1: placeholder — the fund is managed inside Shinami's custody.
-// Phase 2: will query sui-gas-pool for the live available balance.
+// TODO: query sui-gas-pool for the live available balance.
 func (s *SuiClient) GetBalance(_ context.Context) (string, error) {
 	return "0.00", nil
 }
