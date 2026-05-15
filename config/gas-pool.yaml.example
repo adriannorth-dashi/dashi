@@ -4,7 +4,7 @@
 # Documentation: https://github.com/MystenLabs/sui-gas-pool
 
 signer-config:
-  Local:
+  local:
     # Base64-encoded SuiKeyPair: [0x00 flag | 32-byte Ed25519 private key]
     # Run ./scripts/setup-sponsor-wallet.sh to populate this field.
     keypair: "REPLACE_WITH_BASE64_KEYPAIR"
@@ -16,8 +16,8 @@ metrics-port: 9184
 fullnode-url: "https://fullnode.testnet.sui.io:443"
 
 gas-pool-config:
-  Redis:
-    redis-url: "redis://127.0.0.1:6379"
+  redis:
+    redis_url: "redis://127.0.0.1:6379"
 
 coin-init-config:
   # Target balance per gas coin: 0.1 SUI = 100_000_000 MIST
@@ -30,3 +30,6 @@ daily-gas-usage-cap: 1500000000000
 
 # Maximum gas budget per single request: 2 SUI = 2_000_000_000 MIST
 max-sui-per-request: 2000000000
+
+# Set true only for faucet use cases (same address sponsors itself) — not needed here
+advanced-faucet-mode: false

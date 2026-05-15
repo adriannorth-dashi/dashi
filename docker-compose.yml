@@ -1,6 +1,8 @@
 services:
   api:
-    build: .
+    build:
+      context: .
+      network: host
     env_file: .env
     restart: unless-stopped
     network_mode: host
@@ -16,6 +18,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.gaspool
+      network: host
     volumes:
       - ./config:/config:ro
     environment:
