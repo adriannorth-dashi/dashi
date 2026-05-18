@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 
@@ -12,16 +13,23 @@ var suiAddressRegex = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
 
 // Handlers holds all dependencies shared across HTTP handlers.
 type Handlers struct {
-	db      *DB
+	db    *DB
 	dashi *DashiClient
-	sui     *SuiClient
-	cfg     Config
+	sui   *SuiClient
+	cfg   Config
 }
 
 // SponsorRequest is the payload for POST /v1/sponsor.
 type SponsorRequest struct {
 	TransactionKindBytes string `json:"transactionKindBytes" binding:"required"`
 	Sender               string `json:"sender" binding:"required"`
+}
+
+// ExecuteRequest is the payload for POST /v1/execute.
+type ExecuteRequest struct {
+	SponsorshipID int64  `json:"sponsorshipId" binding:"required"`
+	TxBytes       string `json:"txBytes"       binding:"required"`
+	UserSig       string `json:"userSig"       binding:"required"`
 }
 
 // Health handles GET /health.
@@ -35,8 +43,9 @@ func (h *Handlers) Health(c *gin.Context) {
 }
 
 // SponsorTransaction handles POST /v1/sponsor.
-// Validates the request, forwards to the gas backend, logs to Postgres, and returns
-// the sponsored transaction bytes along with fee information.
+// Validates the request, reserves gas via sui-gas-pool, builds TransactionData,
+// and returns it for the sender to sign. The signed transaction must then be
+// submitted to POST /v1/execute.
 func (h *Handlers) SponsorTransaction(c *gin.Context) {
 	var req SponsorRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -49,18 +58,18 @@ func (h *Handlers) SponsorTransaction(c *gin.Context) {
 		return
 	}
 
-	result, err := h.dashi.SponsorTransaction(c.Request.Context(), req.TransactionKindBytes, req.Sender)
+	reservation, err := h.dashi.Reserve(c.Request.Context(), req.TransactionKindBytes, req.Sender)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "sponsorship failed: " + err.Error()})
 		return
 	}
 
-	// Log to Postgres. If logging fails we do not abort — the sponsorship already
-	// happened on-chain and the client must receive the response.
+	// Log to Postgres. If logging fails we do not abort — the reservation already
+	// happened and the client must receive the response.
 	if logErr := h.db.LogSponsorship(c.Request.Context(), &SponsorshipRecord{
-		SponsorshipID: result.SponsorshipID,
+		SponsorshipID: fmt.Sprintf("%d", reservation.ReservationID),
 		Sender:        req.Sender,
-		Status:        "pending",
+		Status:        "reserved",
 		NetworkFee:    3_000_000, // 0.003 SUI in MIST (1 SUI = 1_000_000_000 MIST)
 		ServiceFee:    1_000_000, // 0.001 SUI in MIST
 	}); logErr != nil {
@@ -68,13 +77,35 @@ func (h *Handlers) SponsorTransaction(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"sponsoredTransaction": result.SponsoredTransaction,
-		"sponsorshipId":        result.SponsorshipID,
+		"sponsoredTransaction": reservation.TxBytes,
+		"sponsorshipId":        reservation.ReservationID,
 		"feeInfo": gin.H{
 			"networkFee": "0.003 SUI",
 			"serviceFee": "0.001 SUI",
 			"totalFee":   "0.004 SUI",
 		},
+	})
+}
+
+// ExecuteSponsored handles POST /v1/execute.
+// Receives the sender's signature and forwards to sui-gas-pool for execution.
+// Returns the on-chain transaction digest.
+func (h *Handlers) ExecuteSponsored(c *gin.Context) {
+	var req ExecuteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: sponsorshipId, txBytes and userSig are required"})
+		return
+	}
+
+	digest, err := h.dashi.Execute(c.Request.Context(), req.SponsorshipID, req.TxBytes, req.UserSig)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "execution failed: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"digest": digest,
+		"status": "submitted",
 	})
 }
 
@@ -100,8 +131,7 @@ func (h *Handlers) GetSponsorStatus(c *gin.Context) {
 }
 
 // GetBalance handles GET /v1/balance.
-// Phase 1: returns a placeholder value.
-// Phase 2: will query sui-gas-pool for the live fund balance.
+// Queries the Sui RPC for the sponsor wallet balance.
 func (h *Handlers) GetBalance(c *gin.Context) {
 	balance, err := h.sui.GetBalance(c.Request.Context())
 	if err != nil {

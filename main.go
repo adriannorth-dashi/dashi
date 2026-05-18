@@ -39,6 +39,7 @@ func newRouter(h *Handlers) *gin.Engine {
 	v1 := r.Group("/v1")
 	v1.Use(AuthMiddleware(h.cfg.APIKey))
 	v1.POST("/sponsor", h.SponsorTransaction)
+	v1.POST("/execute", h.ExecuteSponsored)
 	v1.GET("/sponsor/:digest", h.GetSponsorStatus)
 	v1.GET("/balance", h.GetBalance)
 	return r
@@ -85,7 +86,7 @@ func main() {
 
 	h := &Handlers{
 		db:      db,
-		dashi: NewDashiClient(cfg.GasPoolURL, cfg.GasPoolAuthToken),
+		dashi: NewDashiClient(cfg.GasPoolURL, cfg.GasPoolAuthToken, cfg.RPCURL),
 		sui:     NewSuiClient(cfg.RPCURL, cfg.SponsorAddress),
 		cfg:     cfg,
 	}

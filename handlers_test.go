@@ -44,7 +44,7 @@ func newTestHandlers(t *testing.T, gasPool, suiRPC *httptest.Server) *Handlers {
 	}
 	return &Handlers{
 		db:      nullDB(t),
-		dashi: NewDashiClient(gasURL, "test-token"),
+		dashi: NewDashiClient(gasURL, "test-token", ""),
 		sui:     NewSuiClient(suiURL, ""),
 		cfg: Config{
 			Network: "testnet",
@@ -66,6 +66,7 @@ func TestNewRouter_RegistersAllRoutes(t *testing.T) {
 	want := map[string]string{
 		"GET /health":             "",
 		"POST /v1/sponsor":        "",
+		"POST /v1/execute":        "",
 		"GET /v1/sponsor/:digest": "",
 		"GET /v1/balance":         "",
 	}
@@ -162,6 +163,14 @@ func TestSponsorTransaction_ValidRequest(t *testing.T) {
 		if _, ok := resp[field]; !ok {
 			t.Errorf("expected field %q in response, body: %s", field, w.Body.String())
 		}
+	}
+	// sponsoredTransaction is now base64 TransactionData bytes, not a digest.
+	if txBytes, _ := resp["sponsoredTransaction"].(string); txBytes == "" {
+		t.Error("sponsoredTransaction must be a non-empty base64 string")
+	}
+	// sponsorshipId is the numeric reservation ID.
+	if _, ok := resp["sponsorshipId"].(float64); !ok {
+		t.Errorf("sponsorshipId must be a number, got %T", resp["sponsorshipId"])
 	}
 	feeInfo, ok := resp["feeInfo"].(map[string]interface{})
 	if !ok {
@@ -347,6 +356,81 @@ func TestGetBalance_NoAPIKey_Returns401(t *testing.T) {
 	r := newTestRouter(h)
 
 	w := do(t, r, "GET", "/v1/balance", nil, nil)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+// ── POST /v1/execute ──────────────────────────────────────────────────────────
+
+func TestExecuteSponsored_ValidRequest(t *testing.T) {
+	gasPool := testutils.MockGasPoolServer(t)
+	h := newTestHandlers(t, gasPool, nil)
+	r := newTestRouter(h)
+
+	body := map[string]interface{}{
+		"sponsorshipId": 12345,
+		"txBytes":       "AQIDBA==",
+		"userSig":       "dGVzdA==",
+	}
+	w := do(t, r, "POST", "/v1/execute", body, authHeader())
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := parseBody(t, w)
+	if _, ok := resp["digest"]; !ok {
+		t.Error("expected digest field in response")
+	}
+	if _, ok := resp["status"]; !ok {
+		t.Error("expected status field in response")
+	}
+}
+
+func TestExecuteSponsored_GasPoolFailure_Returns502(t *testing.T) {
+	gasPool := testutils.MockGasPoolServerError(t)
+	h := newTestHandlers(t, gasPool, nil)
+	r := newTestRouter(h)
+
+	body := map[string]interface{}{
+		"sponsorshipId": 12345,
+		"txBytes":       "AQIDBA==",
+		"userSig":       "dGVzdA==",
+	}
+	w := do(t, r, "POST", "/v1/execute", body, authHeader())
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 on gas-pool failure, got %d", w.Code)
+	}
+}
+
+func TestExecuteSponsored_MissingFields_Returns400(t *testing.T) {
+	h := newTestHandlers(t, nil, nil)
+	r := newTestRouter(h)
+
+	// Missing userSig
+	body := map[string]interface{}{
+		"sponsorshipId": 12345,
+		"txBytes":       "AQIDBA==",
+	}
+	w := do(t, r, "POST", "/v1/execute", body, authHeader())
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing fields, got %d", w.Code)
+	}
+}
+
+func TestExecuteSponsored_NoAPIKey_Returns401(t *testing.T) {
+	h := newTestHandlers(t, nil, nil)
+	r := newTestRouter(h)
+
+	body := map[string]interface{}{
+		"sponsorshipId": 12345,
+		"txBytes":       "AQIDBA==",
+		"userSig":       "dGVzdA==",
+	}
+	w := do(t, r, "POST", "/v1/execute", body, nil)
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)
