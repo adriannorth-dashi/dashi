@@ -66,7 +66,7 @@ func TestSuiAddressRegex_BoundaryLengths(t *testing.T) {
 
 func TestGetTransactionStatus_Success(t *testing.T) {
 	srv := testutils.MockSuiRPC(t)
-	client := NewSuiClient(srv.URL)
+	client := NewSuiClient(srv.URL, "")
 
 	status, err := client.GetTransactionStatus(context.Background(), testutils.TestTxDigest)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestGetTransactionStatus_FailureStatus(t *testing.T) {
 		})
 	}))
 	t.Cleanup(srv.Close)
-	client := NewSuiClient(srv.URL)
+	client := NewSuiClient(srv.URL, "")
 
 	status, err := client.GetTransactionStatus(context.Background(), testutils.TestTxDigest)
 	if err != nil {
@@ -116,7 +116,7 @@ func TestGetTransactionStatus_UnknownStatus_ReturnsPending(t *testing.T) {
 		})
 	}))
 	t.Cleanup(srv.Close)
-	client := NewSuiClient(srv.URL)
+	client := NewSuiClient(srv.URL, "")
 
 	status, err := client.GetTransactionStatus(context.Background(), testutils.TestTxDigest)
 	if err != nil {
@@ -132,7 +132,7 @@ func TestSuiRPCCall_NonOKHTTPStatus_ReturnsError(t *testing.T) {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 	}))
 	t.Cleanup(srv.Close)
-	client := NewSuiClient(srv.URL)
+	client := NewSuiClient(srv.URL, "")
 
 	// GetTransactionStatus absorbs the error, so call suiRPCCall indirectly via
 	// a status that triggers the non-200 code path inside the RPC layer.
@@ -150,7 +150,7 @@ func TestSuiRPCCall_NonOKHTTPStatus_ReturnsError(t *testing.T) {
 func TestGetTransactionStatus_RPCError_ReturnsPending(t *testing.T) {
 	// When the RPC returns an error (not-found, not finalized), we return "pending".
 	srv := testutils.MockSuiRPCError(t)
-	client := NewSuiClient(srv.URL)
+	client := NewSuiClient(srv.URL, "")
 
 	status, err := client.GetTransactionStatus(context.Background(), "nonexistent-digest")
 	if err != nil {
@@ -162,7 +162,7 @@ func TestGetTransactionStatus_RPCError_ReturnsPending(t *testing.T) {
 }
 
 func TestGetTransactionStatus_UnreachableRPC_ReturnsPending(t *testing.T) {
-	client := NewSuiClient("http://127.0.0.1:19998")
+	client := NewSuiClient("http://127.0.0.1:19998", "")
 
 	status, err := client.GetTransactionStatus(context.Background(), testutils.TestTxDigest)
 	if err != nil {
@@ -176,15 +176,38 @@ func TestGetTransactionStatus_UnreachableRPC_ReturnsPending(t *testing.T) {
 
 // ── SuiClient.GetBalance ──────────────────────────────────────────────────────
 
-func TestGetBalance_ReturnsPlaceholder(t *testing.T) {
-	client := NewSuiClient("http://127.0.0.1:19998")
+func TestGetBalance_NoSponsorAddress_ReturnsZero(t *testing.T) {
+	client := NewSuiClient("http://127.0.0.1:19998", "")
 
 	balance, err := client.GetBalance(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if balance == "" {
-		t.Error("expected non-empty balance string")
+	if balance != "0.00" {
+		t.Errorf("expected 0.00, got %q", balance)
+	}
+}
+
+func TestGetBalance_QueriesRPC(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"result": map[string]interface{}{
+				"totalBalance": "988820037", // 0.98 SUI in MIST
+			},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	client := NewSuiClient(srv.URL, testutils.ValidSuiAddress())
+
+	balance, err := client.GetBalance(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if balance != "0.99" {
+		t.Errorf("expected 0.99, got %q", balance)
 	}
 }
 
@@ -192,7 +215,7 @@ func TestGetBalance_ReturnsPlaceholder(t *testing.T) {
 
 func TestNewSuiClient_StoresURL(t *testing.T) {
 	const url = "https://fullnode.testnet.sui.io:443"
-	c := NewSuiClient(url)
+	c := NewSuiClient(url, "")
 	if c.rpcURL != url {
 		t.Errorf("expected rpcURL=%q, got %q", url, c.rpcURL)
 	}

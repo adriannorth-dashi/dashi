@@ -23,6 +23,7 @@ type Config struct {
 	RPCURL           string
 	GasPoolURL       string // Phase 2: sui-gas-pool base URL
 	GasPoolAuthToken string // Phase 2: GAS_STATION_AUTH bearer token
+	SponsorAddress   string // sponsor wallet address for balance queries
 	APIKey           string
 	DatabaseURL      string
 	RedisURL         string
@@ -51,6 +52,7 @@ func loadConfig() Config {
 		RPCURL:           getEnv("SUI_RPC_URL", "https://fullnode.testnet.sui.io:443"),
 		GasPoolURL:       getEnv("GASPOOL_URL", "http://127.0.0.1:9527"),
 		GasPoolAuthToken: getEnv("GASPOOL_AUTH_TOKEN", ""),
+		SponsorAddress:   getEnv("SPONSOR_ADDRESS", ""),
 		APIKey:           getEnv("API_KEY", ""),
 		DatabaseURL:      getEnv("DATABASE_URL", ""),
 		RedisURL:         getEnv("REDIS_URL", "redis://redis:6379"),
@@ -84,7 +86,7 @@ func main() {
 	h := &Handlers{
 		db:      db,
 		dashi: NewDashiClient(cfg.GasPoolURL, cfg.GasPoolAuthToken),
-		sui:     NewSuiClient(cfg.RPCURL),
+		sui:     NewSuiClient(cfg.RPCURL, cfg.SponsorAddress),
 		cfg:     cfg,
 	}
 

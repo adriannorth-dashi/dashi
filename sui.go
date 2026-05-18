@@ -6,21 +6,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 )
 
 // SuiClient queries the Sui RPC for transaction status and balance information.
 // RPC spec: https://docs.sui.io/sui-api-ref
 type SuiClient struct {
-	rpcURL     string
-	httpClient *http.Client
+	rpcURL          string
+	sponsorAddress  string
+	httpClient      *http.Client
 }
 
 // NewSuiClient creates a client for the given Sui RPC endpoint.
+// sponsorAddress is the gas fund wallet address used for balance queries.
 // Timeout is 15 s — long enough for mainnet under load, short enough to fail fast.
-func NewSuiClient(rpcURL string) *SuiClient {
+func NewSuiClient(rpcURL, sponsorAddress string) *SuiClient {
 	return &SuiClient{
-		rpcURL: rpcURL,
+		rpcURL:         rpcURL,
+		sponsorAddress: sponsorAddress,
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
@@ -108,8 +112,25 @@ func (s *SuiClient) GetTransactionStatus(ctx context.Context, digest string) (st
 	}
 }
 
-// GetBalance returns the SUI balance of the gas fund.
-// TODO: query sui-gas-pool for the live available balance.
-func (s *SuiClient) GetBalance(_ context.Context) (string, error) {
-	return "0.00", nil
+// GetBalance returns the SUI balance of the sponsor wallet.
+// Returns "0.00" if no sponsor address is configured.
+func (s *SuiClient) GetBalance(ctx context.Context) (string, error) {
+	if s.sponsorAddress == "" {
+		return "0.00", nil
+	}
+
+	var result struct {
+		TotalBalance string `json:"totalBalance"`
+	}
+	params := []interface{}{s.sponsorAddress, "0x2::sui::SUI"}
+	if err := s.suiRPCCall(ctx, "suix_getBalance", params, &result); err != nil {
+		return "", fmt.Errorf("balance query: %w", err)
+	}
+
+	mist, err := strconv.ParseFloat(result.TotalBalance, 64)
+	if err != nil {
+		return "", fmt.Errorf("parse balance %q: %w", result.TotalBalance, err)
+	}
+
+	return fmt.Sprintf("%.2f", mist/1_000_000_000), nil
 }

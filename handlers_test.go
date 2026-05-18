@@ -45,7 +45,7 @@ func newTestHandlers(t *testing.T, gasPool, suiRPC *httptest.Server) *Handlers {
 	return &Handlers{
 		db:      nullDB(t),
 		dashi: NewDashiClient(gasURL, "test-token"),
-		sui:     NewSuiClient(suiURL),
+		sui:     NewSuiClient(suiURL, ""),
 		cfg: Config{
 			Network: "testnet",
 			APIKey:  testutils.TestAPIKey,
