@@ -83,7 +83,7 @@ func main() {
 
 	h := &Handlers{
 		db:      db,
-		shinami: NewShinamiClient(cfg.GasPoolURL, cfg.GasPoolAuthToken),
+		dashi: NewDashiClient(cfg.GasPoolURL, cfg.GasPoolAuthToken),
 		sui:     NewSuiClient(cfg.RPCURL),
 		cfg:     cfg,
 	}

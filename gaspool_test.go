@@ -10,10 +10,10 @@ import (
 	"codeberg.org/adrian_north/dashi/testutils"
 )
 
-// ── NewShinamiClient ──────────────────────────────────────────────────────────
+// ── NewDashiClient ────────────────────────────────────────────────────────────
 
-func TestNewShinamiClient_StoresConfig(t *testing.T) {
-	c := NewShinamiClient("http://127.0.0.1:9527", "my-token")
+func TestNewDashiClient_StoresConfig(t *testing.T) {
+	c := NewDashiClient("http://127.0.0.1:9527", "my-token")
 	if c.endpoint != "http://127.0.0.1:9527" {
 		t.Errorf("endpoint = %q", c.endpoint)
 	}
@@ -29,7 +29,7 @@ func TestNewShinamiClient_StoresConfig(t *testing.T) {
 
 func TestSponsorTransaction_ReturnsDigestOnSuccess(t *testing.T) {
 	srv := testutils.MockGasPoolServer(t)
-	client := NewShinamiClient(srv.URL, "tok")
+	client := NewDashiClient(srv.URL, "tok")
 
 	res, err := client.SponsorTransaction(context.Background(), "AQIDBA==", testutils.ValidSuiAddress())
 	if err != nil {
@@ -47,7 +47,7 @@ func TestSponsorTransaction_ReturnsDigestOnSuccess(t *testing.T) {
 
 func TestSponsorTransaction_ReserveGasHTTPError(t *testing.T) {
 	srv := testutils.MockGasPoolServerError(t)
-	client := NewShinamiClient(srv.URL, "tok")
+	client := NewDashiClient(srv.URL, "tok")
 
 	_, err := client.SponsorTransaction(context.Background(), "AQIDBA==", testutils.ValidSuiAddress())
 	if err == nil {
@@ -65,7 +65,7 @@ func TestSponsorTransaction_ReserveGasApplicationError(t *testing.T) {
 		})
 	}))
 	t.Cleanup(srv.Close)
-	client := NewShinamiClient(srv.URL, "tok")
+	client := NewDashiClient(srv.URL, "tok")
 
 	_, err := client.SponsorTransaction(context.Background(), "AQIDBA==", testutils.ValidSuiAddress())
 	if err == nil {
@@ -80,7 +80,7 @@ func TestSponsorTransaction_ReserveGasEmptyResult(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{})
 	}))
 	t.Cleanup(srv.Close)
-	client := NewShinamiClient(srv.URL, "tok")
+	client := NewDashiClient(srv.URL, "tok")
 
 	_, err := client.SponsorTransaction(context.Background(), "AQIDBA==", testutils.ValidSuiAddress())
 	if err == nil {
@@ -111,7 +111,7 @@ func TestSponsorTransaction_ExecuteTxApplicationError(t *testing.T) {
 		})
 	}))
 	t.Cleanup(srv.Close)
-	client := NewShinamiClient(srv.URL, "tok")
+	client := NewDashiClient(srv.URL, "tok")
 
 	_, err := client.SponsorTransaction(context.Background(), "AQIDBA==", testutils.ValidSuiAddress())
 	if err == nil {
@@ -142,7 +142,7 @@ func TestSponsorTransaction_ExecuteTxEmptyDigest(t *testing.T) {
 		})
 	}))
 	t.Cleanup(srv.Close)
-	client := NewShinamiClient(srv.URL, "tok")
+	client := NewDashiClient(srv.URL, "tok")
 
 	_, err := client.SponsorTransaction(context.Background(), "AQIDBA==", testutils.ValidSuiAddress())
 	if err == nil {
@@ -151,7 +151,7 @@ func TestSponsorTransaction_ExecuteTxEmptyDigest(t *testing.T) {
 }
 
 func TestSponsorTransaction_UnreachableEndpoint(t *testing.T) {
-	client := NewShinamiClient("http://127.0.0.1:19997", "tok")
+	client := NewDashiClient("http://127.0.0.1:19997", "tok")
 
 	_, err := client.SponsorTransaction(context.Background(), "AQIDBA==", testutils.ValidSuiAddress())
 	if err == nil {

@@ -84,8 +84,8 @@ func MockGasPoolServerError(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// MockShinamiServer is an alias for MockGasPoolServer — same wire format.
-func MockShinamiServer(t *testing.T) *httptest.Server {
+// MockDashiServer is an alias for MockGasPoolServer — same wire format.
+func MockDashiServer(t *testing.T) *httptest.Server {
 	return MockGasPoolServer(t)
 }
 

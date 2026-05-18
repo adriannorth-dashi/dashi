@@ -13,7 +13,7 @@ var suiAddressRegex = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
 // Handlers holds all dependencies shared across HTTP handlers.
 type Handlers struct {
 	db      *DB
-	shinami *ShinamiClient
+	dashi *DashiClient
 	sui     *SuiClient
 	cfg     Config
 }
@@ -35,7 +35,7 @@ func (h *Handlers) Health(c *gin.Context) {
 }
 
 // SponsorTransaction handles POST /v1/sponsor.
-// Validates the request, forwards to Shinami, logs to Postgres, and returns
+// Validates the request, forwards to the gas backend, logs to Postgres, and returns
 // the sponsored transaction bytes along with fee information.
 func (h *Handlers) SponsorTransaction(c *gin.Context) {
 	var req SponsorRequest
@@ -49,7 +49,7 @@ func (h *Handlers) SponsorTransaction(c *gin.Context) {
 		return
 	}
 
-	result, err := h.shinami.SponsorTransaction(c.Request.Context(), req.TransactionKindBytes, req.Sender)
+	result, err := h.dashi.SponsorTransaction(c.Request.Context(), req.TransactionKindBytes, req.Sender)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "sponsorship failed: " + err.Error()})
 		return

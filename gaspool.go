@@ -11,14 +11,13 @@ import (
 	"time"
 )
 
-// ShinamiClient wraps the sui-gas-pool backend.
+// DashiClient wraps the sui-gas-pool backend.
 //
-// The type name is kept from Phase 1 so handlers.go needs zero changes.
 // Phase 3 replacement plan: delete this file and create a Move smart contract
 // client with the same SponsorTransaction signature.
 //
 // sui-gas-pool docs: https://github.com/MystenLabs/sui-gas-pool
-type ShinamiClient struct {
+type DashiClient struct {
 	endpoint   string
 	authToken  string
 	httpClient *http.Client
@@ -33,11 +32,11 @@ type SponsorshipResult struct {
 	SponsorshipID string
 }
 
-// NewShinamiClient creates a gas-pool client.
+// NewDashiClient creates a gas-pool client.
 // endpoint is the gas-pool base URL (e.g. "http://127.0.0.1:9527").
 // authToken is the GAS_STATION_AUTH Bearer token.
-func NewShinamiClient(endpoint, authToken string) *ShinamiClient {
-	return &ShinamiClient{
+func NewDashiClient(endpoint, authToken string) *DashiClient {
+	return &DashiClient{
 		endpoint:  endpoint,
 		authToken: authToken,
 		httpClient: &http.Client{
@@ -47,7 +46,7 @@ func NewShinamiClient(endpoint, authToken string) *ShinamiClient {
 }
 
 // gasPoolRequest is a generic wrapper for all gas-pool HTTP requests.
-func (c *ShinamiClient) post(ctx context.Context, path string, reqBody, respBody interface{}) error {
+func (c *DashiClient) post(ctx context.Context, path string, reqBody, respBody interface{}) error {
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
@@ -95,7 +94,7 @@ type reserveGasResp struct {
 	Error *string `json:"error"`
 }
 
-func (c *ShinamiClient) reserveGas(ctx context.Context) (*reserveGasResp, error) {
+func (c *DashiClient) reserveGas(ctx context.Context) (*reserveGasResp, error) {
 	req := reserveGasReq{
 		GasBudget:           5_000_000, // 0.005 SUI in MIST — ceiling for this transaction
 		ReserveDurationSecs: 60,        // release reservation after 60 s if execute_tx never called
@@ -128,7 +127,7 @@ type executeTxResp struct {
 	Error *string `json:"error"`
 }
 
-func (c *ShinamiClient) executeTx(ctx context.Context, reservationID, txKindBytes string) (*executeTxResp, error) {
+func (c *DashiClient) executeTx(ctx context.Context, reservationID, txKindBytes string) (*executeTxResp, error) {
 	req := executeTxReq{
 		ReservationID: reservationID,
 		TxBytes:       txKindBytes,
@@ -147,11 +146,11 @@ func (c *ShinamiClient) executeTx(ctx context.Context, reservationID, txKindByte
 	return &resp, nil
 }
 
-// ── Public interface (matches the Phase 1 ShinamiClient signature) ─────────
+// ── Public interface ───────────────────────────────────────────────────────
 
 // SponsorTransaction reserves gas coins from sui-gas-pool and executes the
 // sponsored transaction. Returns the on-chain tx digest as SponsorshipID.
-func (c *ShinamiClient) SponsorTransaction(ctx context.Context, txKindBytes, sender string) (*SponsorshipResult, error) {
+func (c *DashiClient) SponsorTransaction(ctx context.Context, txKindBytes, sender string) (*SponsorshipResult, error) {
 	reservation, err := c.reserveGas(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reserve gas: %w", err)
