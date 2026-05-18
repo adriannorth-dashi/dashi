@@ -28,6 +28,21 @@ type Config struct {
 	RedisURL         string
 }
 
+// newRouter constructs the Gin router with all routes and middleware wired up.
+// Extracted from main() so tests can call it directly and cover the routing logic.
+func newRouter(h *Handlers) *gin.Engine {
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Logger(), gin.Recovery())
+	r.GET("/health", h.Health)
+	v1 := r.Group("/v1")
+	v1.Use(AuthMiddleware(h.cfg.APIKey))
+	v1.POST("/sponsor", h.SponsorTransaction)
+	v1.GET("/sponsor/:digest", h.GetSponsorStatus)
+	v1.GET("/balance", h.GetBalance)
+	return r
+}
+
 func loadConfig() Config {
 	_ = godotenv.Load()
 	return Config{
@@ -73,20 +88,7 @@ func main() {
 		cfg:     cfg,
 	}
 
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
-
-	// Health endpoint requires no authentication.
-	router.GET("/health", h.Health)
-
-	v1 := router.Group("/v1")
-	v1.Use(AuthMiddleware(cfg.APIKey))
-	{
-		v1.POST("/sponsor", h.SponsorTransaction)
-		v1.GET("/sponsor/:digest", h.GetSponsorStatus)
-		v1.GET("/balance", h.GetBalance)
-	}
+	router := newRouter(h)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

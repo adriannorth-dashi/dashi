@@ -260,6 +260,73 @@ node test.mjs
 
 ---
 
+## Going to Mainnet
+
+### Step 1 — Fund your gas pool
+
+Send at least **10 SUI** to your sponsor wallet address (generated in Phase 2 setup).
+Check balance after funding:
+
+```bash
+curl -H "X-API-Key: $API_KEY" http://localhost:8080/v1/balance
+```
+
+### Step 2 — Switch to Mainnet
+
+Edit `.env`:
+
+```env
+SUI_NETWORK=mainnet
+SUI_RPC_URL=https://fullnode.mainnet.sui.io:443
+```
+
+For production traffic, consider a dedicated RPC provider:
+
+```env
+# Dwellir (EU, low latency)
+SUI_RPC_URL=https://sui-mainnet.dwellir.com
+# QuickNode
+SUI_RPC_URL=https://your-endpoint.quiknode.pro/your-key/
+```
+
+### Step 3 — Run pre-flight check
+
+```bash
+./scripts/mainnet-check.sh
+# Checks: API health, network=mainnet, balance > 0, Postgres, Redis, gas-pool
+```
+
+### Step 4 — Start in production mode
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mainnet.yml up -d
+```
+
+The production override enables:
+- `GIN_MODE=release` (no debug output)
+- Redis AOF persistence (no data loss on restart)
+- Postgres tuning (`shared_buffers=256MB`, slow query logging)
+- `restart: always` on all services
+
+---
+
+## Testing
+
+```bash
+# All unit tests (no external dependencies)
+make test
+
+# With coverage report (opens coverage.html)
+make test-coverage
+
+# Integration tests against a running local instance
+make test-integration
+```
+
+Coverage target: **≥ 80%**
+
+---
+
 ## Roadmap
 
 - [x] Phase 1 — API Server with Shinami backend

@@ -17,11 +17,12 @@ type SuiClient struct {
 }
 
 // NewSuiClient creates a client for the given Sui RPC endpoint.
+// Timeout is 15 s — long enough for mainnet under load, short enough to fail fast.
 func NewSuiClient(rpcURL string) *SuiClient {
 	return &SuiClient{
 		rpcURL: rpcURL,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 15 * time.Second,
 		},
 	}
 }
