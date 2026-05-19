@@ -305,9 +305,23 @@ Licensed under Apache 2.0.
 
 ---
 
+##  Disclaimer
+
+Dashi is experimental software. Use at your own risk.
+
+- This software is provided "as is" without warranty of any kind
+- The authors are not responsible for any loss of funds
+- Always test on a small amount before production use
+- You are responsible for securing your sponsor wallet private key
+- Never share your private key or API key with anyone
+
+This software is not affiliated with Mysten Labs or the Sui Foundation.
+sui-gas-pool is developed by Mysten Labs and licensed under Apache 2.0.
+
 ## License
 
-MIT — do whatever you want, just don't blame us if something breaks.
+Copyright (C) 2025 Dashi Project  
+Licensed under [AGPL-3.0](LICENSE)
 
 ---
 

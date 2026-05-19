@@ -1,3 +1,6 @@
+// Copyright (C) 2025 Dashi Project
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package testutils provides shared helpers for Dashi unit tests.
 // It contains only standard-library dependencies so it never imports
 // the main package (which would create a circular dependency).
