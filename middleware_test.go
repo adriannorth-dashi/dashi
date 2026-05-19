@@ -81,7 +81,7 @@ func TestAuthMiddleware_WrongBearerToken_Returns401(t *testing.T) {
 
 func TestAuthMiddleware_HealthEndpointBypassesAuth(t *testing.T) {
 	// /health is registered outside the auth group — no key needed.
-	h := &Handlers{cfg: Config{Network: "testnet", APIKey: "any-key"}}
+	h := &Handlers{cfg: Config{Network: "mainnet", APIKey: "any-key"}}
 	r := newTestRouter(h)
 
 	req := httptest.NewRequest("GET", "/health", nil) // no API key

@@ -19,8 +19,8 @@ func TestSuiAddressRegex_ValidAddresses(t *testing.T) {
 		address string
 	}{
 		{"lowercase hex", testutils.ValidSuiAddress()},
-		{"uppercase hex", "0x5757176F7FD65AA19893EC3DD368D88E25E032956AF29843BDCBB03CA60F86F6"},
-		{"mixed case hex", "0x5757176f7fd65AA19893ec3DD368D88e25E032956AF29843bdcbb03ca60F86f6"},
+		{"uppercase hex", "0xABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234"},
+		{"mixed case hex", "0xabcd1234ABCD1234abcd1234ABCD1234abcd1234ABCD1234abcd1234ABCD1234"},
 		{"all zeros", "0x" + strings.Repeat("0", 64)},
 		{"all f", "0x" + strings.Repeat("f", 64)},
 	}
@@ -214,7 +214,7 @@ func TestGetBalance_QueriesRPC(t *testing.T) {
 // ── NewSuiClient ──────────────────────────────────────────────────────────────
 
 func TestNewSuiClient_StoresURL(t *testing.T) {
-	const url = "https://fullnode.testnet.sui.io:443"
+	const url = "http://127.0.0.1:9999"
 	c := NewSuiClient(url, "")
 	if c.rpcURL != url {
 		t.Errorf("expected rpcURL=%q, got %q", url, c.rpcURL)

@@ -76,7 +76,7 @@ func TestLogSponsorship_InsertsRow(t *testing.T) {
 	})
 }
 
-func TestLogSponsorship_DuplicateID_ReturnsError(t *testing.T) {
+func TestLogSponsorship_DuplicateID_Upserts(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 
@@ -84,7 +84,7 @@ func TestLogSponsorship_DuplicateID_ReturnsError(t *testing.T) {
 	rec := &SponsorshipRecord{
 		SponsorshipID: id,
 		Sender:        "0x" + "5757176f7fd65aa19893ec3dd368d88e25e032956af29843bdcbb03ca60f86f6",
-		Status:        "pending",
+		Status:        "reserved",
 		NetworkFee:    3_000_000,
 		ServiceFee:    1_000_000,
 	}
@@ -96,8 +96,20 @@ func TestLogSponsorship_DuplicateID_ReturnsError(t *testing.T) {
 	if err := db.LogSponsorship(ctx, rec); err != nil {
 		t.Fatalf("first insert: %v", err)
 	}
-	if err := db.LogSponsorship(ctx, rec); err == nil {
-		t.Fatal("expected error on duplicate sponsorship_id, got nil")
+
+	// Second call with same ID must not error — gas pool reuses IDs after restart.
+	rec.Sender = "0x" + "7947caac8d728b10a960ac82fd6cd823f8ea7409245f2420465a71660f1e273c"
+	if err := db.LogSponsorship(ctx, rec); err != nil {
+		t.Fatalf("upsert on duplicate: %v", err)
+	}
+
+	// Verify the record was overwritten with the new sender.
+	got, err := db.GetSponsorshipByID(ctx, id)
+	if err != nil || got == nil {
+		t.Fatalf("fetch after upsert: %v", err)
+	}
+	if got.Sender != rec.Sender {
+		t.Errorf("sender not updated: got %s, want %s", got.Sender, rec.Sender)
 	}
 }
 

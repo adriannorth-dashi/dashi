@@ -18,8 +18,9 @@ const TestAPIKey = "test-api-key-32chars-1234567890ab"
 const TestTxDigest = "EXc7TJpYGEuhXBnRJBxsMgbFAMkWqRCNhSMaCKbTnpyQ"
 
 // ValidSuiAddress returns a well-formed Sui address (0x + 64 lowercase hex chars).
+// This is a test-only placeholder — not a real wallet address.
 func ValidSuiAddress() string {
-	return "0x5757176f7fd65aa19893ec3dd368d88e25e032956af29843bdcbb03ca60f86f6"
+	return "0x" + "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234"
 }
 
 // InvalidSuiAddresses returns named test cases for malformed Sui addresses.
@@ -53,7 +54,14 @@ func MockGasPoolServer(t *testing.T) *httptest.Server {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"result": map[string]interface{}{
 				"sponsor_address": ValidSuiAddress(),
-				"reservation_id":  "test-reservation-abc123",
+				"reservation_id":  12345,
+				"gas_coins": []map[string]interface{}{
+					{
+						"objectId": ValidSuiAddress(),
+						"version":  uint64(12345),
+						"digest":   TestTxDigest,
+					},
+				},
 			},
 		})
 	})

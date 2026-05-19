@@ -184,6 +184,13 @@ func TestReserveAndExecute_FullFlow(t *testing.T) {
 				"result": map[string]interface{}{
 					"sponsor_address": testutils.ValidSuiAddress(),
 					"reservation_id":  123,
+					"gas_coins": []map[string]interface{}{
+						{
+							"objectId": testutils.ValidSuiAddress(),
+							"version":  uint64(12345),
+							"digest":   testutils.TestTxDigest,
+						},
+					},
 				},
 			})
 			return

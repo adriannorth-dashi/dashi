@@ -36,8 +36,13 @@ func TestGetEnv_ReturnsFallbackForEmptyValue(t *testing.T) {
 }
 
 func TestLoadConfig_Defaults(t *testing.T) {
-	// Unset all Dashi env vars so we get pure defaults.
-	vars := []string{"PORT", "SUI_NETWORK", "SUI_RPC_URL", "GASPOOL_URL", "GASPOOL_AUTH_TOKEN", "API_KEY", "DATABASE_URL", "REDIS_URL"}
+	// Hide .env so godotenv.Load() has no effect during this test.
+	if err := os.Rename(".env", ".env.test_bak"); err == nil {
+		defer os.Rename(".env.test_bak", ".env")
+	}
+
+	// Unset all Dashi env vars so we get pure code-level defaults.
+	vars := []string{"PORT", "SUI_NETWORK", "SUI_RPC_URL", "GASPOOL_URL", "GASPOOL_AUTH_TOKEN", "SPONSOR_ADDRESS", "API_KEY", "DATABASE_URL", "REDIS_URL"}
 	saved := make(map[string]string, len(vars))
 	for _, v := range vars {
 		saved[v] = os.Getenv(v)
@@ -56,10 +61,10 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.Port != "8080" {
 		t.Errorf("default Port = %q, want 8080", cfg.Port)
 	}
-	if cfg.Network != "testnet" {
-		t.Errorf("default Network = %q, want testnet", cfg.Network)
+	if cfg.Network != "mainnet" {
+		t.Errorf("default Network = %q, want mainnet", cfg.Network)
 	}
-	if cfg.RPCURL != "https://fullnode.testnet.sui.io:443" {
+	if cfg.RPCURL != "https://fullnode.mainnet.sui.io:443" {
 		t.Errorf("default RPCURL = %q", cfg.RPCURL)
 	}
 	if cfg.GasPoolURL != "http://127.0.0.1:9527" {

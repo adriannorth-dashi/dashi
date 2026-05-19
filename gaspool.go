@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ func NewDashiClient(endpoint, authToken, rpcURL string) *DashiClient {
 		authToken: authToken,
 		rpcURL:    rpcURL,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 90 * time.Second,
 		},
 	}
 }
@@ -93,10 +94,17 @@ type reserveGasReq struct {
 	ReserveDurationSecs int64 `json:"reserve_duration_secs"`
 }
 
+type gasCoin struct {
+	ObjectID string `json:"objectId"`
+	Version  uint64 `json:"version"`
+	Digest   string `json:"digest"` // base58-encoded 32-byte hash
+}
+
 type reserveGasResp struct {
 	Result *struct {
-		SponsorAddress string `json:"sponsor_address"`
-		ReservationID  int64  `json:"reservation_id"`
+		SponsorAddress string    `json:"sponsor_address"`
+		ReservationID  int64     `json:"reservation_id"`
+		GasCoins       []gasCoin `json:"gas_coins"`
 	} `json:"result"`
 	Error *string `json:"error"`
 }
@@ -113,7 +121,7 @@ func (c *DashiClient) reserveGas(ctx context.Context) (*reserveGasResp, error) {
 	if resp.Error != nil {
 		return nil, fmt.Errorf("reserve_gas error: %s", *resp.Error)
 	}
-	if resp.Result == nil || resp.Result.ReservationID == 0 {
+	if resp.Result == nil || resp.Result.ReservationID == 0 || len(resp.Result.GasCoins) == 0 {
 		return nil, fmt.Errorf("reserve_gas returned empty result")
 	}
 	return &resp, nil
@@ -128,6 +136,9 @@ type executeTxReq struct {
 }
 
 type executeTxResp struct {
+	Effects *struct {
+		TransactionDigest string `json:"transactionDigest"`
+	} `json:"effects"`
 	TxBlockResponse *struct {
 		Digest string `json:"digest"`
 	} `json:"tx_block_response"`
@@ -147,10 +158,22 @@ func (c *DashiClient) executeTx(ctx context.Context, reservationID int64, txByte
 	if resp.Error != nil {
 		return nil, fmt.Errorf("execute_tx error: %s", *resp.Error)
 	}
-	if resp.TxBlockResponse == nil || resp.TxBlockResponse.Digest == "" {
+	if resp.digest() == "" {
 		return nil, fmt.Errorf("execute_tx returned empty digest")
 	}
 	return &resp, nil
+}
+
+// digest returns the transaction digest from whichever field the gas pool populated.
+// sui-gas-pool places it in effects.transactionDigest; tx_block_response is a fallback.
+func (r *executeTxResp) digest() string {
+	if r.Effects != nil && r.Effects.TransactionDigest != "" {
+		return r.Effects.TransactionDigest
+	}
+	if r.TxBlockResponse != nil && r.TxBlockResponse.Digest != "" {
+		return r.TxBlockResponse.Digest
+	}
+	return ""
 }
 
 // ── Gas price ────────────────────────────────────────────────────────────────
@@ -218,23 +241,63 @@ func hexToAddress(addr string) ([32]byte, error) {
 	return out, nil
 }
 
+const base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+// base58Decode decodes a standard (Bitcoin-alphabet) base58 string to 32 bytes.
+// Used for Sui ObjectDigest values returned by the gas pool.
+func base58Decode(s string) ([32]byte, error) {
+	result := new(big.Int)
+	base := big.NewInt(58)
+	for _, c := range s {
+		idx := strings.IndexRune(base58Alphabet, c)
+		if idx < 0 {
+			return [32]byte{}, fmt.Errorf("invalid base58 character %q", c)
+		}
+		result.Mul(result, base)
+		result.Add(result, big.NewInt(int64(idx)))
+	}
+	decoded := result.Bytes()
+	if len(decoded) > 32 {
+		return [32]byte{}, fmt.Errorf("base58 decoded to %d bytes, expected ≤32", len(decoded))
+	}
+	var out [32]byte
+	copy(out[32-len(decoded):], decoded)
+	return out, nil
+}
+
+// writeBCSULEB128 writes v as a BCS/ULEB128 variable-length integer.
+func writeBCSULEB128(buf *bytes.Buffer, v uint64) {
+	for {
+		b := byte(v & 0x7f)
+		v >>= 7
+		if v != 0 {
+			b |= 0x80
+		}
+		buf.WriteByte(b)
+		if v == 0 {
+			break
+		}
+	}
+}
+
 // buildTransactionData constructs BCS-encoded Sui TransactionData (V1) from a
-// TransactionKind byte slice and the sponsorship parameters.
+// TransactionKind byte slice, sponsorship parameters, and gas coins.
 //
-// The GasData.payment field is left empty — sui-gas-pool replaces it with the
-// reserved gas coins when execute_tx is called.
+// BCS layout (TransactionData::V1 → TransactionDataV1):
 //
-// BCS layout:
-//
-//	[0x00]        TransactionData::V1 discriminant
-//	[kindBytes]   BCS TransactionKind (as produced by the Sui SDK)
-//	[32 bytes]    sender SuiAddress
-//	[0x00]        GasData.payment Vec<ObjectRef> = empty (ULEB128 = 0)
-//	[32 bytes]    GasData.owner (sponsor address)
-//	[8 bytes LE]  GasData.price (u64)
-//	[8 bytes LE]  GasData.budget (u64)
-//	[0x00]        TransactionExpiration::None
-func buildTransactionData(kindBytes []byte, sender, sponsorAddr string, gasPrice, gasBudget uint64) ([]byte, error) {
+//	[0x00]                TransactionData::V1 discriminant
+//	[kindBytes]           BCS TransactionKind
+//	[32 bytes]            sender SuiAddress
+//	ULEB128(len(coins))   GasData.payment Vec<ObjectRef>
+//	  for each coin:
+//	    [32 bytes]         ObjectID
+//	    [8 bytes LE]       SequenceNumber (version, u64)
+//	    [0x20, 32 bytes]   ObjectDigest (serde_bytes: ULEB128 len + raw bytes)
+//	[32 bytes]            GasData.owner (sponsor address)
+//	[8 bytes LE]          GasData.price (u64)
+//	[8 bytes LE]          GasData.budget (u64)
+//	[0x00]                TransactionExpiration::None
+func buildTransactionData(kindBytes []byte, sender, sponsorAddr string, coins []gasCoin, gasPrice, gasBudget uint64) ([]byte, error) {
 	senderAddr, err := hexToAddress(sender)
 	if err != nil {
 		return nil, fmt.Errorf("parse sender: %w", err)
@@ -249,14 +312,33 @@ func buildTransactionData(kindBytes []byte, sender, sponsorAddr string, gasPrice
 	buf.Write(kindBytes)     // TransactionKind (BCS-encoded by the Sui SDK)
 	buf.Write(senderAddr[:]) // sender
 
-	// GasData
-	buf.WriteByte(0x00)   // payment: Vec<ObjectRef> = [] (ULEB128 = 0)
-	buf.Write(sponsor[:]) // owner
+	// GasData.payment: Vec<ObjectRef>
+	writeBCSULEB128(&buf, uint64(len(coins)))
+	for _, coin := range coins {
+		objID, err := hexToAddress(coin.ObjectID)
+		if err != nil {
+			return nil, fmt.Errorf("parse gas coin objectId: %w", err)
+		}
+		buf.Write(objID[:]) // ObjectID (32 bytes)
+
+		var verBytes [8]byte
+		binary.LittleEndian.PutUint64(verBytes[:], coin.Version)
+		buf.Write(verBytes[:]) // SequenceNumber (u64 LE)
+
+		digest, err := base58Decode(coin.Digest)
+		if err != nil {
+			return nil, fmt.Errorf("decode gas coin digest: %w", err)
+		}
+		buf.WriteByte(0x20) // ObjectDigest: serde_bytes → ULEB128(32) then raw bytes
+		buf.Write(digest[:])
+	}
+
+	buf.Write(sponsor[:]) // GasData.owner
 	var u64 [8]byte
 	binary.LittleEndian.PutUint64(u64[:], gasPrice)
-	buf.Write(u64[:]) // price
+	buf.Write(u64[:]) // GasData.price
 	binary.LittleEndian.PutUint64(u64[:], gasBudget)
-	buf.Write(u64[:]) // budget
+	buf.Write(u64[:]) // GasData.budget
 
 	buf.WriteByte(0x00) // TransactionExpiration::None
 
@@ -280,7 +362,7 @@ func (c *DashiClient) Reserve(ctx context.Context, txKindBytes, sender string) (
 
 	gasPrice := c.getReferenceGasPrice(ctx)
 
-	txData, err := buildTransactionData(kindBytes, sender, reservation.Result.SponsorAddress, gasPrice, 5_000_000)
+	txData, err := buildTransactionData(kindBytes, sender, reservation.Result.SponsorAddress, reservation.Result.GasCoins, gasPrice, 5_000_000)
 	if err != nil {
 		return nil, fmt.Errorf("build tx data: %w", err)
 	}
@@ -300,5 +382,5 @@ func (c *DashiClient) Execute(ctx context.Context, reservationID int64, txBytes,
 	if err != nil {
 		return "", err
 	}
-	return result.TxBlockResponse.Digest, nil
+	return result.digest(), nil
 }

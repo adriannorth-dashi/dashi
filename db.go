@@ -103,11 +103,20 @@ CREATE INDEX IF NOT EXISTS idx_sponsorships_created_at  ON sponsorships(created_
 CREATE INDEX IF NOT EXISTS idx_sponsorships_digest      ON sponsorships(digest);
 `
 
-// LogSponsorship inserts a new sponsorship record with status "pending".
+// LogSponsorship inserts a new sponsorship record. ON CONFLICT resets status so that
+// repeated test runs with the same reservation ID (gas pool resets its counter on restart)
+// don't leave a stale "failed" record blocking a fresh attempt.
 func (d *DB) LogSponsorship(ctx context.Context, rec *SponsorshipRecord) error {
 	_, err := d.conn.ExecContext(ctx, `
 		INSERT INTO sponsorships (sponsorship_id, customer_id, sender, status, network_fee, service_fee)
 		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (sponsorship_id) DO UPDATE
+		  SET sender      = EXCLUDED.sender,
+		      status      = EXCLUDED.status,
+		      network_fee = EXCLUDED.network_fee,
+		      service_fee = EXCLUDED.service_fee,
+		      digest      = NULL,
+		      completed_at = NULL
 	`, rec.SponsorshipID, rec.CustomerID, rec.Sender, rec.Status, rec.NetworkFee, rec.ServiceFee)
 	return err
 }
@@ -137,6 +146,26 @@ func (d *DB) GetSponsorshipByDigest(ctx context.Context, digest string) (*Sponso
 	if err != nil {
 		return nil, err
 	}
+	return &rec, nil
+}
+
+// GetSponsorshipByID looks up a sponsorship by its numeric reservation ID.
+// Returns nil, nil when no row is found.
+func (d *DB) GetSponsorshipByID(ctx context.Context, sponsorshipID string) (*SponsorshipRecord, error) {
+	var rec SponsorshipRecord
+	var digest sql.NullString
+	err := d.conn.QueryRowContext(ctx, `
+		SELECT sponsorship_id, sender, COALESCE(digest, ''), status, network_fee, service_fee
+		FROM sponsorships
+		WHERE sponsorship_id = $1
+	`, sponsorshipID).Scan(&rec.SponsorshipID, &rec.Sender, &digest, &rec.Status, &rec.NetworkFee, &rec.ServiceFee)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	rec.Digest = digest.String
 	return &rec, nil
 }
 

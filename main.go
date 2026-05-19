@@ -40,6 +40,7 @@ func newRouter(h *Handlers) *gin.Engine {
 	v1.Use(AuthMiddleware(h.cfg.APIKey))
 	v1.POST("/sponsor", h.SponsorTransaction)
 	v1.POST("/execute", h.ExecuteSponsored)
+	v1.GET("/execute/:id", h.GetExecuteStatus)
 	v1.GET("/sponsor/:digest", h.GetSponsorStatus)
 	v1.GET("/balance", h.GetBalance)
 	return r
@@ -49,8 +50,8 @@ func loadConfig() Config {
 	_ = godotenv.Load()
 	return Config{
 		Port:             getEnv("PORT", "8080"),
-		Network:          getEnv("SUI_NETWORK", "testnet"),
-		RPCURL:           getEnv("SUI_RPC_URL", "https://fullnode.testnet.sui.io:443"),
+		Network:          getEnv("SUI_NETWORK", "mainnet"),
+		RPCURL:           getEnv("SUI_RPC_URL", "https://fullnode.mainnet.sui.io:443"),
 		GasPoolURL:       getEnv("GASPOOL_URL", "http://127.0.0.1:9527"),
 		GasPoolAuthToken: getEnv("GASPOOL_AUTH_TOKEN", ""),
 		SponsorAddress:   getEnv("SPONSOR_ADDRESS", ""),
@@ -97,7 +98,7 @@ func main() {
 		Addr:         ":" + cfg.Port,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -88,8 +90,9 @@ func (h *Handlers) SponsorTransaction(c *gin.Context) {
 }
 
 // ExecuteSponsored handles POST /v1/execute.
-// Receives the sender's signature and forwards to sui-gas-pool for execution.
-// Returns the on-chain transaction digest.
+// Validates the request, marks the sponsorship as submitted, then fires the
+// gas-pool call in a background goroutine (Sui finalization can take minutes).
+// Returns 202 immediately — poll GET /v1/execute/:id for the final digest.
 func (h *Handlers) ExecuteSponsored(c *gin.Context) {
 	var req ExecuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -97,16 +100,54 @@ func (h *Handlers) ExecuteSponsored(c *gin.Context) {
 		return
 	}
 
-	digest, err := h.dashi.Execute(c.Request.Context(), req.SponsorshipID, req.TxBytes, req.UserSig)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "execution failed: " + err.Error()})
+	idStr := fmt.Sprintf("%d", req.SponsorshipID)
+	_ = h.db.UpdateSponsorshipStatus(c.Request.Context(), idStr, "submitted", "")
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+
+		digest, err := h.dashi.Execute(ctx, req.SponsorshipID, req.TxBytes, req.UserSig)
+		if err != nil {
+			_ = h.db.UpdateSponsorshipStatus(context.Background(), idStr, "failed", "")
+			return
+		}
+		_ = h.db.UpdateSponsorshipStatus(context.Background(), idStr, "completed", digest)
+	}()
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"sponsorshipId": req.SponsorshipID,
+		"status":        "submitted",
+	})
+}
+
+// GetExecuteStatus handles GET /v1/execute/:id.
+// Polls the DB for the current execution status of a sponsorship.
+func (h *Handlers) GetExecuteStatus(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"digest": digest,
-		"status": "submitted",
-	})
+	rec, err := h.db.GetSponsorshipByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	if rec == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "sponsorship not found"})
+		return
+	}
+
+	resp := gin.H{
+		"sponsorshipId": id,
+		"status":        rec.Status,
+	}
+	if rec.Digest != "" {
+		resp["digest"] = rec.Digest
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // GetSponsorStatus handles GET /v1/sponsor/:digest.

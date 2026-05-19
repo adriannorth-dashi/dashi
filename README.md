@@ -65,8 +65,9 @@ If Dashi goes down, your funds are safe. No custodial risk. No regulatory gray a
 ```bash
 git clone https://codeberg.org/adrian_north/dashi
 cd dashi
-cp .env.example .env
-# Fill in your Shinami API Key and a secure API Key
+cp .env.example .env                      # fill in API_KEY, GASPOOL_AUTH_TOKEN, SPONSOR_ADDRESS
+cp config/gas-pool.yaml.example config/gas-pool.yaml
+./scripts/setup-sponsor-wallet.sh         # generates keypair, writes config/gas-pool.yaml
 docker compose up -d
 ```
 
@@ -75,7 +76,7 @@ Your Gas Station is live in under 5 minutes.
 ```bash
 # Health check
 curl http://localhost:8080/health
-# → { "status": "ok", "network": "testnet" }
+# → {"status":"ok","network":"mainnet","version":"1.0.0"}
 
 # Sponsor a transaction
 curl -X POST http://localhost:8080/v1/sponsor \
@@ -154,23 +155,19 @@ dApp
  ▼
 Dashi API (Go + Gin)          ← your Docker Compose
  │   ├── Auth (API Key)
- │   ├── Rate Limiting (Redis)
  │   ├── Logging (Postgres)
  │   └── Fee Info
  │
  │  internal
  ▼
-Shinami Gas Station API       ← Phase 1 backend
+sui-gas-pool (Mysten Labs)    ← coin management backend
  │
  ▼
-Sui Blockchain
+Sui Blockchain (Mainnet)
 ```
 
-- **Phase 1 (current):** Shinami handles coin management internally.
-- **Phase 2 (roadmap):** `sui-gas-pool` (Mysten Labs, Apache 2.0) replaces Shinami — fully self-contained, no third-party dependency.
-- **Phase 3 (roadmap):** On-chain fee collection via Move smart contract.
-
-The API surface never changes between phases. Your integration stays the same.
+- **Current:** `sui-gas-pool` manages gas coins — fully self-contained, no third-party dependency.
+- **Roadmap:** On-chain fee collection via Move smart contract.
 
 ---
 
@@ -183,33 +180,28 @@ The API surface never changes between phases. Your integration stays the same.
 | Cache / Queue   | Redis 7                  |
 | Reverse Proxy   | Nginx                    |
 | Deployment      | Docker Compose           |
-| Blockchain      | Sui (Testnet + Mainnet)  |
+| Blockchain      | Sui Mainnet              |
 
 ---
 
 ## Configuration
 
+See `.env.example` for all available options. Key settings:
+
 ```env
-# Network
-SUI_NETWORK=testnet
-SUI_RPC_URL=https://fullnode.testnet.sui.io:443
+SUI_NETWORK=mainnet
+SUI_RPC_URL=https://fullnode.mainnet.sui.io:443
 
-# Shinami (get your free key at app.shinami.com)
-SHINAMI_GAS_STATION_KEY=us1_sui_testnet_YOUR_KEY
-
-# Your API Key (generate: openssl rand -hex 32)
+# Generate: openssl rand -hex 32
 API_KEY=your_secure_random_key
+GASPOOL_AUTH_TOKEN=your_secure_random_token
 
-# Server
-PORT=8080
+SPONSOR_ADDRESS=0xYOUR_SPONSOR_WALLET
 ```
 
 ---
 
-## Phase 2 Setup (sui-gas-pool)
-
-Phase 2 replaces Shinami with [sui-gas-pool](https://github.com/MystenLabs/sui-gas-pool)
-by Mysten Labs — fully self-contained, no third-party dependency.
+## Setup
 
 ### Step 1: Generate sponsor wallet
 
@@ -217,124 +209,81 @@ by Mysten Labs — fully self-contained, no third-party dependency.
 ./scripts/setup-sponsor-wallet.sh
 ```
 
-The script generates an Ed25519 keypair, writes it into `config/gas-pool.yaml`,
-and prints the sponsor address. **Never commit `config/gas-pool.yaml` after this step.**
+Generates an Ed25519 keypair, writes it into `config/gas-pool.yaml`, and prints the sponsor address. **`config/gas-pool.yaml` is gitignored — never commit it.**
 
 ### Step 2: Fund the sponsor wallet
 
-```bash
-curl -X POST https://faucet.testnet.sui.io/v1/gas \
-  -H "Content-Type: application/json" \
-  -d '{"FixedAmountRequest":{"recipient":"0xYOUR_SPONSOR_ADDRESS"}}'
-```
-
-The gas pool needs at least **1 SUI** to start splitting coins and sponsoring transactions.
-
-### Step 3: Set the auth token
-
-In `.env`:
-```env
-GASPOOL_AUTH_TOKEN=your_secure_random_token   # openssl rand -hex 32
-```
-
-The same token is used by `docker-compose.yml` as `GAS_STATION_AUTH` for the gas pool container.
-
-### Step 4: Build and start
+Send at least **10 SUI** to your sponsor address on Mainnet:
 
 ```bash
+curl -H "X-API-Key: $API_KEY" http://localhost:8080/v1/balance
+```
+
+### Step 3: Configure and start
+
+```bash
+cp .env.example .env   # fill in API_KEY, GASPOOL_AUTH_TOKEN, SPONSOR_ADDRESS
+
 # First build takes 20-40 min (compiles sui-gas-station from source)
 docker compose build gaspool
 
 docker compose up -d
 ```
 
-### Step 5: Test
+### Step 4: Verify
 
 ```bash
 curl http://localhost:8080/health
-# → {"status":"ok","network":"testnet","version":"1.0.0"}
+# → {"status":"ok","network":"mainnet","version":"1.0.0"}
 
-node test.mjs
-# → {"sponsoredTransaction":"...","sponsorshipId":"<txDigest>","feeInfo":{...}}
-```
-
----
-
-## Going to Mainnet
-
-### Step 1 — Fund your gas pool
-
-Send at least **10 SUI** to your sponsor wallet address (generated in Phase 2 setup).
-Check balance after funding:
-
-```bash
-curl -H "X-API-Key: $API_KEY" http://localhost:8080/v1/balance
-```
-
-### Step 2 — Switch to Mainnet
-
-Edit `.env`:
-
-```env
-SUI_NETWORK=mainnet
-SUI_RPC_URL=https://fullnode.mainnet.sui.io:443
-```
-
-For production traffic, consider a dedicated RPC provider:
-
-```env
-# Dwellir (EU, low latency)
-SUI_RPC_URL=https://sui-mainnet.dwellir.com
-# QuickNode
-SUI_RPC_URL=https://your-endpoint.quiknode.pro/your-key/
-```
-
-### Step 3 — Run pre-flight check
-
-```bash
 ./scripts/mainnet-check.sh
-# Checks: API health, network=mainnet, balance > 0, Postgres, Redis, gas-pool
+# Checks: health, network=mainnet, balance > 0, Postgres, Redis, gas-pool
 ```
-
-### Step 4 — Start in production mode
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.mainnet.yml up -d
-```
-
-The production override enables:
-- `GIN_MODE=release` (no debug output)
-- Redis AOF persistence (no data loss on restart)
-- Postgres tuning (`shared_buffers=256MB`, slow query logging)
-- `restart: always` on all services
 
 ---
 
 ## Testing
 
+### Unit Tests
+
 ```bash
-# All unit tests (no external dependencies)
+# No network, no external dependencies
 make test
 
-# With coverage report (opens coverage.html)
+# Coverage report
 make test-coverage
-
-# Integration tests against a running local instance
-make test-integration
 ```
 
 Coverage target: **≥ 80%**
+
+### Manual End-to-End Test (Mainnet)
+
+Add `SENDER_PRIVKEY=suiprivkey1...` to your `.env`, then:
+
+```bash
+node test.mjs
+```
+
+For a pipeline smoke-check without a real sender wallet:
+
+```bash
+./scripts/manual-mainnet-test.sh
+```
+
+This checks health, shows the sponsor balance, asks for confirmation, then verifies the sponsor pipeline.
+
+**Never run mainnet tests in CI/CD.**
 
 ---
 
 ## Roadmap
 
-- [x] Phase 1 — API Server with Shinami backend
-- [x] Phase 1 — Docker Compose (one command setup)
-- [x] Phase 1 — PostgreSQL transaction logging
-- [x] Phase 1 — API Key authentication
-- [x] Phase 2 — `sui-gas-pool` integration (remove Shinami dependency)
-- [ ] Phase 2 — Multi-tenant API keys from database
+- [x] API Server with sui-gas-pool backend
+- [x] Docker Compose (one command setup)
+- [x] PostgreSQL transaction logging
+- [x] API Key authentication
+- [x] Async execute with polling (`POST /v1/execute` → `GET /v1/execute/:id`)
+- [ ] Multi-tenant API keys from database
 - [ ] Phase 2 — Rate limiting per customer
 - [ ] Phase 3 — On-chain fee collection to operator wallet
 - [ ] Phase 3 — Web dashboard for monitoring

@@ -13,7 +13,7 @@ rpc-host-ip: "0.0.0.0"
 rpc-port: 9527
 metrics-port: 9184
 
-fullnode-url: "https://fullnode.testnet.sui.io:443"
+fullnode-url: "https://fullnode.mainnet.sui.io:443"
 
 gas-pool-config:
   redis:

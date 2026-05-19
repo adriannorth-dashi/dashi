@@ -2,29 +2,42 @@
 
 # ── Test targets ──────────────────────────────────────────────────────────────
 
-## Run all unit tests (default)
+## Unit tests only — no network, no Postgres required (default)
 test: test-unit
 
-## Unit tests only — no network, no Postgres required (DB tests skipped automatically)
 test-unit:
 	go test -mod=vendor -count=1 ./...
 
-## Integration tests — requires a running Dashi instance (docker compose up -d)
-## Set API_KEY and optionally DASHI_URL before running.
+## Integration tests require a separate Dashi instance on TESTNET.
+## The Docker stack runs Mainnet-only — running this against it will fail immediately
+## at the requireTestnet() guard. To use: stand up a local testnet Dashi separately.
 test-integration:
-	go test -mod=vendor -count=1 -tags integration -run TestIntegration ./...
+	@echo ""
+	@echo "  Integration tests require a TESTNET Dashi instance."
+	@echo "  The Docker stack runs Mainnet-only and cannot be used here."
+	@echo ""
+	@echo "  To run integration tests, start a separate testnet instance and set:"
+	@echo "    DASHI_URL=http://localhost:<testnet-port> API_KEY=<key> make test-integration-run"
+	@echo ""
 
-## Unit tests with HTML coverage report (opens coverage.html)
+## Unit tests with HTML coverage report
 test-coverage:
 	go test -mod=vendor -count=1 -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	go tool cover -func=coverage.out | tail -1
 	@echo "Coverage report written to coverage.html"
 
-## Integration tests against mainnet — set DASHI_URL to your mainnet instance
+## Mainnet testing is MANUAL ONLY — this target prints instructions and exits.
+## Run ./scripts/manual-mainnet-test.sh directly. Never run mainnet tests in CI/CD.
 test-mainnet:
-	DASHI_URL=$${DASHI_MAINNET_URL:-http://localhost:8080} \
-	go test -mod=vendor -count=1 -tags integration -run TestIntegration -v ./...
+	@echo ""
+	@echo "  Mainnet testing is MANUAL ONLY. This target does nothing."
+	@echo ""
+	@echo "  To test against mainnet, run the script directly:"
+	@echo "    ./scripts/manual-mainnet-test.sh"
+	@echo ""
+	@echo "  Never run mainnet tests in CI/CD pipelines."
+	@echo ""
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 

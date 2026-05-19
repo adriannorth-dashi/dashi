@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS customers (
 
 CREATE TABLE IF NOT EXISTS sponsorships (
     id             BIGSERIAL    PRIMARY KEY,
-    sponsorship_id TEXT         NOT NULL UNIQUE,   -- Shinami's sponsorship ID
+    sponsorship_id TEXT         NOT NULL UNIQUE,   -- gas-pool reservation ID (string)
     customer_id    BIGINT       REFERENCES customers(id),
     sender         TEXT         NOT NULL,           -- Sui address of the end-user
     digest         TEXT,                            -- Sui TX digest (filled after confirmation)

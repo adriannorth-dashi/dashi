@@ -2,7 +2,7 @@
 # setup-sponsor-wallet.sh — generate an Ed25519 sponsor keypair for sui-gas-pool
 #
 # Writes the keypair to config/gas-pool.yaml and prints the Sui address
-# so you can fund the wallet with SUI on testnet before starting the service.
+# so you can fund the wallet with SUI on Mainnet before starting the service.
 #
 # Usage: ./scripts/setup-sponsor-wallet.sh
 
@@ -98,17 +98,17 @@ echo "════════════════════════�
 echo ""
 echo "Next steps:"
 echo ""
-echo "  1. Fund this address with at least 1 SUI on testnet:"
-echo "     https://faucet.testnet.sui.io"
-echo "     or: curl -X POST https://faucet.testnet.sui.io/v1/gas \\"
-echo "       -H 'Content-Type: application/json' \\"
-echo "       -d '{\"FixedAmountRequest\":{\"recipient\":\"$SUI_ADDRESS\"}}'"
+echo "  1. Fund this address with at least 10 SUI on Mainnet."
 echo ""
-echo "  2. Build and start the gas pool:"
+echo "  2. Set SPONSOR_ADDRESS in .env:"
+echo "     SPONSOR_ADDRESS=$SUI_ADDRESS"
+echo ""
+echo "  3. Build and start:"
 echo "     docker compose build gaspool   # takes 20-40 min first time"
 echo "     docker compose up -d"
 echo ""
-echo "  3. Run the test:"
-echo "     node test.mjs"
+echo "  4. Verify:"
+echo "     curl http://localhost:8080/health"
+echo "     ./scripts/mainnet-check.sh"
 echo ""
 

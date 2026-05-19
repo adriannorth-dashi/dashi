@@ -47,7 +47,7 @@ func newTestHandlers(t *testing.T, gasPool, suiRPC *httptest.Server) *Handlers {
 		dashi: NewDashiClient(gasURL, "test-token", ""),
 		sui:     NewSuiClient(suiURL, ""),
 		cfg: Config{
-			Network: "testnet",
+			Network: "mainnet",
 			APIKey:  testutils.TestAPIKey,
 		},
 	}
@@ -67,6 +67,7 @@ func TestNewRouter_RegistersAllRoutes(t *testing.T) {
 		"GET /health":             "",
 		"POST /v1/sponsor":        "",
 		"POST /v1/execute":        "",
+		"GET /v1/execute/:id":     "",
 		"GET /v1/sponsor/:digest": "",
 		"GET /v1/balance":         "",
 	}
@@ -126,8 +127,8 @@ func TestHealth_Returns200WithStatusOk(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Errorf("expected status=ok, got %v", body["status"])
 	}
-	if body["network"] != "testnet" {
-		t.Errorf("expected network=testnet, got %v", body["network"])
+	if body["network"] != "mainnet" {
+		t.Errorf("expected network=mainnet, got %v", body["network"])
 	}
 }
 
@@ -376,19 +377,19 @@ func TestExecuteSponsored_ValidRequest(t *testing.T) {
 	}
 	w := do(t, r, "POST", "/v1/execute", body, authHeader())
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
 	resp := parseBody(t, w)
-	if _, ok := resp["digest"]; !ok {
-		t.Error("expected digest field in response")
+	if _, ok := resp["sponsorshipId"]; !ok {
+		t.Error("expected sponsorshipId field in response")
 	}
-	if _, ok := resp["status"]; !ok {
-		t.Error("expected status field in response")
+	if resp["status"] != "submitted" {
+		t.Errorf("expected status=submitted, got %v", resp["status"])
 	}
 }
 
-func TestExecuteSponsored_GasPoolFailure_Returns502(t *testing.T) {
+func TestExecuteSponsored_GasPoolFailure_Returns202(t *testing.T) {
 	gasPool := testutils.MockGasPoolServerError(t)
 	h := newTestHandlers(t, gasPool, nil)
 	r := newTestRouter(h)
@@ -400,8 +401,9 @@ func TestExecuteSponsored_GasPoolFailure_Returns502(t *testing.T) {
 	}
 	w := do(t, r, "POST", "/v1/execute", body, authHeader())
 
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 on gas-pool failure, got %d", w.Code)
+	// Execute is async — always returns 202 immediately regardless of gas-pool outcome.
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 (async), got %d", w.Code)
 	}
 }
 

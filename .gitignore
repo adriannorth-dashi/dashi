@@ -29,6 +29,11 @@ dist/
 build/
 out/
 /dashi
+/dashi_linux
+
+# Test coverage
+coverage.out
+coverage.html
 
 # Environment variables
 .env
@@ -48,3 +53,6 @@ Thumbs.db
 # sui-gas-pool config — contains private key after setup, never commit
 config/sponsor.key
 config/gas-pool.yaml
+config/*.key
+*.pem
+*.key
