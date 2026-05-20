@@ -5,17 +5,17 @@
 #   2. docker compose -f docker-compose.hub.yml up -d
 #
 # Docker Compose reads .env automatically from the same directory.
-# Generate tokens: openssl rand -hex 32
+# All configuration lives in .env — this file contains no hardcoded values.
 
 services:
   api:
     image: adriannorth/dashi-api:latest
     ports:
-      - "80:8080"
+      - "${PORT:-8080}:8080"
     env_file: .env
     environment:
-      GASPOOL_URL:  http://gaspool:9527
-      DATABASE_URL: postgres://gasstation:secret@postgres:5432/gasstation
+      GASPOOL_URL:  http://gaspool:${GASPOOL_RPC_PORT:-9527}
+      DATABASE_URL: postgres://${POSTGRES_USER:-gasstation}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gasstation}
       REDIS_URL:    redis://redis:6379
     restart: unless-stopped
     depends_on:
@@ -42,13 +42,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB:       gasstation
-      POSTGRES_USER:     gasstation
-      POSTGRES_PASSWORD: secret
+      POSTGRES_DB:       ${POSTGRES_DB:-gasstation}
+      POSTGRES_USER:     ${POSTGRES_USER:-gasstation}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gasstation"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gasstation}"]
       interval: 5s
       timeout:  5s
       retries:  10
@@ -82,8 +82,8 @@ configs:
           keypair: "${GASPOOL_KEYPAIR}"
 
       rpc-host-ip: "0.0.0.0"
-      rpc-port: 9527
-      metrics-port: 9184
+      rpc-port: ${GASPOOL_RPC_PORT:-9527}
+      metrics-port: ${GASPOOL_METRICS_PORT:-9184}
 
       fullnode-url: "${SUI_RPC_URL:-https://fullnode.mainnet.sui.io:443}"
 
@@ -92,9 +92,9 @@ configs:
           redis_url: "redis://redis:6379"
 
       coin-init-config:
-        target-init-balance: 100000000
-        refresh-interval-sec: 86400
+        target-init-balance: ${GASPOOL_TARGET_BALANCE:-100000000}
+        refresh-interval-sec: ${GASPOOL_REFRESH_INTERVAL:-86400}
 
-      daily-gas-usage-cap: 1500000000000
-      max-sui-per-request: 2000000000
+      daily-gas-usage-cap: ${GASPOOL_DAILY_CAP:-1500000000000}
+      max-sui-per-request: ${GASPOOL_MAX_PER_REQUEST:-2000000000}
       advanced-faucet-mode: false
