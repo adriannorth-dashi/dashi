@@ -79,8 +79,7 @@ API is available on port 80.
 git clone https://codeberg.org/adrian_north/dashi
 cd dashi
 cp .env.example .env
-cp config/gas-pool.yaml.example config/gas-pool.yaml
-# Fill in all required values in .env and config/gas-pool.yaml
+# Fill in all required values in .env
 docker compose up -d
 ```
 

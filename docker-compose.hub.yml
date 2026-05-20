@@ -8,14 +8,26 @@
 # All configuration lives in .env — this file contains no hardcoded values.
 
 services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    configs:
+      - source: nginx_config
+        target: /etc/nginx/nginx.conf
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - dashi
+
   api:
     image: adriannorth/dashi-api:latest
-    ports:
-      - "${PORT:-8080}:8080"
     env_file: .env
     environment:
+      PORT:         "8080"
       GASPOOL_URL:  http://gaspool:${GASPOOL_RPC_PORT:-9527}
-      DATABASE_URL: postgres://${POSTGRES_USER:-gasstation}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gasstation}
+      DATABASE_URL: postgres://${POSTGRES_USER:-gasstation}:${POSTGRES_PASSWORD:-secret}@postgres:5432/${POSTGRES_DB:-gasstation}
       REDIS_URL:    redis://redis:6379
     restart: unless-stopped
     depends_on:
@@ -44,7 +56,7 @@ services:
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-gasstation}
       POSTGRES_USER:     ${POSTGRES_USER:-gasstation}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -75,6 +87,33 @@ networks:
   dashi:
 
 configs:
+  nginx_config:
+    content: |
+      worker_processes auto;
+      events { worker_connections 1024; }
+      http {
+        include      /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        gzip on;
+        gzip_types application/json text/plain;
+        gzip_min_length 256;
+        server_tokens off;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    30s;
+        proxy_send_timeout    30s;
+        upstream api { server api:8080; keepalive 32; }
+        server {
+          listen 80;
+          proxy_set_header Host              $host;
+          proxy_set_header X-Real-IP         $remote_addr;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_http_version 1.1;
+          proxy_set_header Connection "";
+          location / { proxy_pass http://api; }
+        }
+      }
+
   gaspool_config:
     content: |
       signer-config:

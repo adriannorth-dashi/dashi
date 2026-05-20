@@ -1,11 +1,27 @@
 services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - dashi
+
   api:
     build:
       context: .
       network: host
     env_file: .env
+    environment:
+      PORT:         "8080"
+      GASPOOL_URL:  http://gaspool:${GASPOOL_RPC_PORT:-9527}
+      DATABASE_URL: postgres://${POSTGRES_USER:-gasstation}:${POSTGRES_PASSWORD:-secret}@postgres:5432/${POSTGRES_DB:-gasstation}
+      REDIS_URL:    redis://redis:6379
     restart: unless-stopped
-    network_mode: host
     depends_on:
       postgres:
         condition: service_healthy
@@ -13,58 +29,79 @@ services:
         condition: service_healthy
       gaspool:
         condition: service_started
+    networks:
+      - dashi
 
   gaspool:
     build:
       context: .
       dockerfile: Dockerfile.gaspool
       network: host
-    volumes:
-      - ./config:/config:ro
     environment:
-      # Bearer token for the gas-pool REST API.
-      # Must match GASPOOL_AUTH_TOKEN in .env.
       GAS_STATION_AUTH: ${GASPOOL_AUTH_TOKEN}
-    network_mode: host
+    configs:
+      - source: gaspool_config
+        target: /config/gas-pool.yaml
     restart: unless-stopped
-    # gaspool is not exposed externally — it listens on 127.0.0.1:9527
-    # and is only reachable by the api container via the host network.
+    networks:
+      - dashi
 
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB:       gasstation
-      POSTGRES_USER:     gasstation
-      POSTGRES_PASSWORD: secret
+      POSTGRES_DB:       ${POSTGRES_DB:-gasstation}
+      POSTGRES_USER:     ${POSTGRES_USER:-gasstation}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    network_mode: host
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gasstation"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gasstation}"]
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout:  5s
+      retries:  10
+    networks:
+      - dashi
 
   redis:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
-    network_mode: host
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
-      retries: 10
-
-  nginx:
-    image: nginx:alpine
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - api
-    restart: unless-stopped
-    network_mode: host
+      timeout:  5s
+      retries:  10
+    networks:
+      - dashi
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  dashi:
+
+configs:
+  gaspool_config:
+    content: |
+      signer-config:
+        local:
+          keypair: "${GASPOOL_KEYPAIR}"
+
+      rpc-host-ip: "0.0.0.0"
+      rpc-port: ${GASPOOL_RPC_PORT:-9527}
+      metrics-port: ${GASPOOL_METRICS_PORT:-9184}
+
+      fullnode-url: "${SUI_RPC_URL:-https://fullnode.mainnet.sui.io:443}"
+
+      gas-pool-config:
+        redis:
+          redis_url: "redis://redis:6379"
+
+      coin-init-config:
+        target-init-balance: ${GASPOOL_TARGET_BALANCE:-100000000}
+        refresh-interval-sec: ${GASPOOL_REFRESH_INTERVAL:-86400}
+
+      daily-gas-usage-cap: ${GASPOOL_DAILY_CAP:-1500000000000}
+      max-sui-per-request: ${GASPOOL_MAX_PER_REQUEST:-2000000000}
+      advanced-faucet-mode: false
