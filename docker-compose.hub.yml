@@ -1,0 +1,100 @@
+# Dashi — Docker Hub Quickstart
+#
+# Usage:
+#   1. cp .env.example .env  (then fill in all values)
+#   2. docker compose -f docker-compose.hub.yml up -d
+#
+# Docker Compose reads .env automatically from the same directory.
+# Generate tokens: openssl rand -hex 32
+
+services:
+  api:
+    image: adriannorth/dashi-api:latest
+    ports:
+      - "80:8080"
+    env_file: .env
+    environment:
+      GASPOOL_URL:  http://gaspool:9527
+      DATABASE_URL: postgres://gasstation:secret@postgres:5432/gasstation
+      REDIS_URL:    redis://redis:6379
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      gaspool:
+        condition: service_started
+    networks:
+      - dashi
+
+  gaspool:
+    image: adriannorth/dashi-gaspool:latest
+    environment:
+      GAS_STATION_AUTH: ${GASPOOL_AUTH_TOKEN}
+    configs:
+      - source: gaspool_config
+        target: /config/gas-pool.yaml
+    restart: unless-stopped
+    networks:
+      - dashi
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       gasstation
+      POSTGRES_USER:     gasstation
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gasstation"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+    networks:
+      - dashi
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+    networks:
+      - dashi
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  dashi:
+
+configs:
+  gaspool_config:
+    content: |
+      signer-config:
+        local:
+          keypair: "${GASPOOL_KEYPAIR}"
+
+      rpc-host-ip: "0.0.0.0"
+      rpc-port: 9527
+      metrics-port: 9184
+
+      fullnode-url: "${SUI_RPC_URL:-https://fullnode.mainnet.sui.io:443}"
+
+      gas-pool-config:
+        redis:
+          redis_url: "redis://redis:6379"
+
+      coin-init-config:
+        target-init-balance: 100000000
+        refresh-interval-sec: 86400
+
+      daily-gas-usage-cap: 1500000000000
+      max-sui-per-request: 2000000000
+      advanced-faucet-mode: false

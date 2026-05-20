@@ -59,15 +59,32 @@ Dashi is different:
 
 ## Quickstart
 
+### Option A — Docker Hub (recommended)
+
+No build step. Two files, images pulled from Docker Hub automatically.
+
+```bash
+curl -O https://codeberg.org/adrian_north/dashi/raw/branch/main/docker-compose.hub.yml
+curl -O https://codeberg.org/adrian_north/dashi/raw/branch/main/.env.example
+mv .env.example .env
+# Fill in all values in .env (API_KEY, GASPOOL_AUTH_TOKEN, SPONSOR_ADDRESS, GASPOOL_KEYPAIR)
+docker compose -f docker-compose.hub.yml up -d
+```
+
+API is available on port 80.
+
+### Option B — Build from source
+
 ```bash
 git clone https://codeberg.org/adrian_north/dashi
 cd dashi
 cp .env.example .env
-# Fill in all required values in .env
+cp config/gas-pool.yaml.example config/gas-pool.yaml
+# Fill in all required values in .env and config/gas-pool.yaml
 docker compose up -d
 ```
 
-Your Gas Station is live in under 5 minutes.
+First build takes 20–40 min (compiles sui-gas-station from Rust source).
 
 ---
 
