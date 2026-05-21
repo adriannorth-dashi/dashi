@@ -198,6 +198,45 @@ SPONSOR_ADDRESS=0xYOUR_SPONSOR_WALLET
 
 ---
 
+## Logging
+
+Dashi emits structured JSON logs compatible with any log management platform:
+
+- Grafana Loki
+- Graylog / GELF
+- Datadog
+- AWS CloudWatch
+- Azure Application Insights
+- Elastic Stack
+
+Set `LOG_LEVEL` in `.env` to control verbosity:
+
+| Level   | What you see                                            |
+|---------|---------------------------------------------------------|
+| `error` | Fatal errors only                                       |
+| `warn`  | Auth failures, rejected requests (default for alerts)   |
+| `info`  | Successful sponsorships, server start/stop **(default)**|
+| `debug` | Full gas-pool request/response bodies                   |
+
+**Example — info level (default):**
+```json
+{"time":"...","level":"INFO","msg":"dashi starting","version":"1.0.0","port":"8080","network":"mainnet"}
+{"time":"...","level":"INFO","msg":"sponsorship reserved","sponsorship_id":2,"sender":"0xabcd...","duration_ms":463}
+{"time":"...","level":"WARN","msg":"auth rejected: invalid api key","path":"/v1/sponsor"}
+{"time":"...","level":"WARN","msg":"api error","status":400,"error":"Invalid Sui address format","path":"/v1/sponsor","method":"POST"}
+```
+
+**Example — debug level** (`LOG_LEVEL=debug` in `.env`):
+```json
+{"time":"...","level":"DEBUG","msg":"gas-pool request","path":"/v1/reserve_gas","body":"{\"gas_budget\":5000000,...}"}
+{"time":"...","level":"DEBUG","msg":"gas-pool response","path":"/v1/reserve_gas","status":200,"body":"{\"result\":{...}}"}
+```
+
+> Error responses sent to clients always contain only `error` and `hint`.
+> The internal `detail` (stack trace / upstream message) stays in the log — never exposed to the caller.
+
+---
+
 ## Roadmap
 
 - [x] API Server with sui-gas-pool backend
