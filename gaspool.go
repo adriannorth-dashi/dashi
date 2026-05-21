@@ -12,7 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -63,7 +63,7 @@ func (c *DashiClient) post(ctx context.Context, path string, reqBody, respBody i
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	log.Printf("→ gas-pool %s: %s", path, payload)
+	slog.Debug("gas-pool request", "path", path, "body", string(payload))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+path, bytes.NewReader(payload))
 	if err != nil {
@@ -82,7 +82,7 @@ func (c *DashiClient) post(ctx context.Context, path string, reqBody, respBody i
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
-	log.Printf("← gas-pool %s (HTTP %d): %s", path, resp.StatusCode, raw)
+	slog.Debug("gas-pool response", "path", path, "status", resp.StatusCode, "body", string(raw))
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("gas-pool returned HTTP %d: %s", resp.StatusCode, raw)

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -24,12 +25,14 @@ func AuthMiddleware(apiKey string) gin.HandlerFunc {
 		}
 
 		if key == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API key required (X-API-Key header or Authorization: Bearer)"})
+			slog.Warn("auth rejected: no api key", "path", c.Request.URL.Path)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrAPIKeyRequired)
 			return
 		}
 
 		if key != apiKey {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid API key"})
+			slog.Warn("auth rejected: invalid api key", "path", c.Request.URL.Path)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrInvalidAPIKey)
 			return
 		}
 

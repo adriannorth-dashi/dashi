@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"time"
@@ -52,20 +53,21 @@ func (h *Handlers) Health(c *gin.Context) {
 // and returns it for the sender to sign. The signed transaction must then be
 // submitted to POST /v1/execute.
 func (h *Handlers) SponsorTransaction(c *gin.Context) {
+	start := time.Now()
 	var req SponsorRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: transactionKindBytes and sender are required"})
+		respondError(c, http.StatusBadRequest, ErrInvalidBody, err.Error())
 		return
 	}
 
 	if !suiAddressRegex.MatchString(req.Sender) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid Sui address: must be 0x followed by 64 hex characters"})
+		respondError(c, http.StatusBadRequest, ErrInvalidAddress)
 		return
 	}
 
 	reservation, err := h.dashi.Reserve(c.Request.Context(), req.TransactionKindBytes, req.Sender)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "sponsorship failed: " + err.Error()})
+		respondError(c, http.StatusBadGateway, ErrGasPoolUnavailable, err.Error())
 		return
 	}
 
@@ -78,8 +80,15 @@ func (h *Handlers) SponsorTransaction(c *gin.Context) {
 		NetworkFee:    3_000_000, // 0.003 SUI in MIST (1 SUI = 1_000_000_000 MIST)
 		ServiceFee:    1_000_000, // 0.001 SUI in MIST
 	}); logErr != nil {
+		slog.Error("failed to log sponsorship", "sponsorship_id", reservation.ReservationID, "err", logErr)
 		_ = c.Error(logErr)
 	}
+
+	slog.Info("sponsorship reserved",
+		"sponsorship_id", reservation.ReservationID,
+		"sender", req.Sender,
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"sponsoredTransaction": reservation.TxBytes,
@@ -99,12 +108,14 @@ func (h *Handlers) SponsorTransaction(c *gin.Context) {
 func (h *Handlers) ExecuteSponsored(c *gin.Context) {
 	var req ExecuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: sponsorshipId, txBytes and userSig are required"})
+		respondError(c, http.StatusBadRequest, ErrExecuteInvalidBody, err.Error())
 		return
 	}
 
 	idStr := fmt.Sprintf("%d", req.SponsorshipID)
 	_ = h.db.UpdateSponsorshipStatus(c.Request.Context(), idStr, "submitted", "")
+
+	slog.Info("execute submitted", "sponsorship_id", req.SponsorshipID)
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -112,9 +123,11 @@ func (h *Handlers) ExecuteSponsored(c *gin.Context) {
 
 		digest, err := h.dashi.Execute(ctx, req.SponsorshipID, req.TxBytes, req.UserSig)
 		if err != nil {
+			slog.Error("execute failed", "sponsorship_id", req.SponsorshipID, "err", err)
 			_ = h.db.UpdateSponsorshipStatus(context.Background(), idStr, "failed", "")
 			return
 		}
+		slog.Info("execute completed", "sponsorship_id", req.SponsorshipID, "digest", digest)
 		_ = h.db.UpdateSponsorshipStatus(context.Background(), idStr, "completed", digest)
 	}()
 
@@ -129,17 +142,17 @@ func (h *Handlers) ExecuteSponsored(c *gin.Context) {
 func (h *Handlers) GetExecuteStatus(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+		respondError(c, http.StatusBadRequest, APIError{Error: "id is required", Hint: "Provide the sponsorship ID in the URL path"})
 		return
 	}
 
 	rec, err := h.db.GetSponsorshipByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		respondError(c, http.StatusInternalServerError, ErrDatabase, err.Error())
 		return
 	}
 	if rec == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "sponsorship not found"})
+		respondError(c, http.StatusNotFound, ErrSponsorshipNotFound)
 		return
 	}
 
@@ -158,13 +171,13 @@ func (h *Handlers) GetExecuteStatus(c *gin.Context) {
 func (h *Handlers) GetSponsorStatus(c *gin.Context) {
 	digest := c.Param("digest")
 	if digest == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "digest is required"})
+		respondError(c, http.StatusBadRequest, APIError{Error: "digest is required", Hint: "Provide the transaction digest in the URL path"})
 		return
 	}
 
 	status, err := h.sui.GetTransactionStatus(c.Request.Context(), digest)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to query transaction status: " + err.Error()})
+		respondError(c, http.StatusBadGateway, ErrSuiRPCUnavailable, err.Error())
 		return
 	}
 
@@ -179,7 +192,7 @@ func (h *Handlers) GetSponsorStatus(c *gin.Context) {
 func (h *Handlers) GetBalance(c *gin.Context) {
 	balance, err := h.sui.GetBalance(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "failed to retrieve balance"})
+		respondError(c, http.StatusServiceUnavailable, ErrBalanceUnavailable, err.Error())
 		return
 	}
 

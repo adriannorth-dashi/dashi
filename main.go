@@ -5,7 +5,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +18,27 @@ import (
 )
 
 const version = "1.0.0"
+
+// initLogger configures the global slog logger.
+// LOG_LEVEL env var accepts: debug, info, warn, error (case-insensitive). Default: info.
+// Output is always JSON so log aggregators (Loki, CloudWatch, etc.) can parse it.
+func initLogger() {
+	levelStr := getEnv("LOG_LEVEL", "info")
+	var level slog.Level
+	switch levelStr {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	slog.SetDefault(slog.New(handler))
+}
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {
@@ -73,26 +94,30 @@ func getEnv(key, fallback string) string {
 
 func main() {
 	cfg := loadConfig()
+	initLogger()
 
 	if cfg.APIKey == "" {
-		log.Fatal("API_KEY must be set")
+		slog.Error("API_KEY must be set")
+		os.Exit(1)
 	}
 
 	db, err := NewDB(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("database connection failed: %v", err)
+		slog.Error("database connection failed", "err", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
 	if err := db.Migrate(); err != nil {
-		log.Fatalf("database migration failed: %v", err)
+		slog.Error("database migration failed", "err", err)
+		os.Exit(1)
 	}
 
 	h := &Handlers{
-		db:      db,
+		db:    db,
 		dashi: NewDashiClient(cfg.GasPoolURL, cfg.GasPoolAuthToken, cfg.RPCURL),
-		sui:     NewSuiClient(cfg.RPCURL, cfg.SponsorAddress),
-		cfg:     cfg,
+		sui:   NewSuiClient(cfg.RPCURL, cfg.SponsorAddress),
+		cfg:   cfg,
 	}
 
 	router := newRouter(h)
@@ -106,9 +131,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Dashi %s starting on :%s (network: %s)", version, cfg.Port, cfg.Network)
+		slog.Info("dashi starting", "version", version, "port", cfg.Port, "network", cfg.Network)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			slog.Error("server error", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -116,11 +142,12 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down gracefully...")
+	slog.Info("shutting down gracefully")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
+		slog.Error("forced shutdown", "err", err)
+		os.Exit(1)
 	}
-	log.Println("server stopped")
+	slog.Info("server stopped")
 }
