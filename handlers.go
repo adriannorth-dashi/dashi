@@ -23,6 +23,7 @@ type Handlers struct {
 	dashi *DashiClient
 	sui   *SuiClient
 	cfg   Config
+	rl    *RateLimiter // nil = rate limiting disabled (e.g. in tests)
 }
 
 // SponsorRequest is the payload for POST /v1/sponsor.
