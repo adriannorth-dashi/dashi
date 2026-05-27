@@ -94,11 +94,35 @@ First build takes 20–40 min (compiles sui-gas-station from Rust source).
 Sponsor a transaction for a user.
 
 **Request:**
+
 ```json
 {
-  "transactionKindBytes": "string (Base64)",
-  "sender": "string (0x + 64 hex chars)"
+  "transactionKindBytes": "AQIDBA==",
+  "sender": "0xabcd...1234"
 }
+```
+
+**`sender`** — The user's Sui wallet address. You get this from the connected wallet:
+```ts
+const sender = wallet.address; // e.g. "0xabc...123"
+```
+
+**`transactionKindBytes`** — The transaction the user wants to execute, serialized to Base64.
+Build it with the Sui TypeScript SDK and set `onlyTransactionKind: true` — this tells the SDK
+to serialize only what the transaction *does*, without gas or sender fields (Dashi fills those in):
+
+```ts
+import { Transaction } from "@mysten/sui/transactions";
+import { toBase64 } from "@mysten/sui/utils";
+
+const tx = new Transaction();
+tx.moveCall({
+  target: "0xPACKAGE::MODULE::FUNCTION",
+  arguments: [tx.pure.u64(42)],
+});
+
+const kindBytes = await tx.build({ onlyTransactionKind: true });
+const transactionKindBytes = toBase64(kindBytes); // send this to Dashi
 ```
 
 **Response:**
