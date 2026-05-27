@@ -261,6 +261,44 @@ Set `LOG_LEVEL` in `.env` to control verbosity:
 
 ---
 
+## Rate Limiting
+
+Dashi enforces two independent limits, both backed by Redis so they hold across multiple API replicas.
+
+| Limit | Default | Applies to |
+|---|---|---|
+| Per API key — GET | 60 req/min | `GET /v1/execute/:id`, `GET /v1/sponsor/:digest`, `GET /v1/balance` |
+| Per API key — POST | 30 req/min | `POST /v1/sponsor`, `POST /v1/execute` |
+| Global | 500 req/min | All requests combined |
+
+Configure in `.env`:
+
+```env
+RATE_LIMIT_PER_MINUTE=60           # per-key GET limit (POST gets half)
+RATE_LIMIT_GLOBAL_PER_MINUTE=500   # global cap across all callers
+```
+
+When a limit is exceeded the API returns HTTP **429**:
+
+```json
+{
+  "error": "Rate limit exceeded",
+  "hint": "Maximum 60 requests per minute per API key"
+}
+```
+
+Every response also includes the standard rate limit headers:
+
+```
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 42
+X-RateLimit-Reset: 1748001120
+```
+
+> If Redis is unreachable on startup, Dashi logs a warning and continues without rate limiting (fail-open).
+
+---
+
 ## Roadmap
 
 - [x] API Server with sui-gas-pool backend
@@ -268,7 +306,7 @@ Set `LOG_LEVEL` in `.env` to control verbosity:
 - [x] PostgreSQL transaction logging
 - [x] API Key authentication
 - [x] Async execute with polling (`POST /v1/execute` → `GET /v1/execute/:id`)
-- [ ] Phase 2 — Rate limiting per customer
+- [x] Phase 2 — Rate limiting per customer (Redis-backed, per API key + global)
 - [ ] Phase 3 — On-chain fee collection to operator wallet
 - [ ] Phase 3 — Web dashboard for monitoring
 - [ ] Phase 3 — Fraud detection
