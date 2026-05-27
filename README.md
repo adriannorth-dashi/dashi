@@ -267,14 +267,17 @@ Dashi enforces two independent limits, both backed by Redis so they hold across 
 
 | Limit | Default | Applies to |
 |---|---|---|
-| Per API key — GET | 60 req/min | `GET /v1/execute/:id`, `GET /v1/sponsor/:digest`, `GET /v1/balance` |
-| Per API key — POST | 30 req/min | `POST /v1/sponsor`, `POST /v1/execute` |
-| Global | 500 req/min | All requests combined |
+| Limit | Default | Env var | Applies to |
+|---|---|---|---|
+| Per API key — GET | 60 req/min | `RATE_LIMIT_PER_MINUTE` | `GET /v1/execute/:id`, `GET /v1/sponsor/:digest`, `GET /v1/balance` |
+| Per API key — POST | 30 req/min | `RATE_LIMIT_POST_PER_MINUTE` | `POST /v1/sponsor`, `POST /v1/execute` |
+| Global | 500 req/min | `RATE_LIMIT_GLOBAL_PER_MINUTE` | All requests combined |
 
 Configure in `.env`:
 
 ```env
-RATE_LIMIT_PER_MINUTE=60           # per-key GET limit (POST gets half)
+RATE_LIMIT_PER_MINUTE=60           # per-key limit for GET endpoints
+RATE_LIMIT_POST_PER_MINUTE=30      # per-key limit for POST endpoints
 RATE_LIMIT_GLOBAL_PER_MINUTE=500   # global cap across all callers
 ```
 
