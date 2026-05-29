@@ -184,3 +184,76 @@ func TestRateLimitMiddleware_SkipsRequestsWithoutAPIKey(t *testing.T) {
 		}
 	}
 }
+
+// TestPerSenderRateLimit_Returns429AfterLimit verifies that the n+1-th sponsor
+// request from the same sender wallet is rejected with 429.
+func TestPerSenderRateLimit_Returns429AfterLimit(t *testing.T) {
+	gasPool := testutils.MockGasPoolServer(t)
+	suiRPC := testutils.MockSuiRPC(t)
+	h, rl := newTestHandlersWithRL(t)
+	h.dashi = NewDashiClient(gasPool.URL, "test-token", suiRPC.URL)
+	h.sui = NewSuiClient(suiRPC.URL, "")
+	h.cfg.RateLimitSenderPerMinute = 2
+
+	flushRateLimitKeys(t, rl)
+	t.Cleanup(func() { flushRateLimitKeys(t, rl) })
+
+	r := newRouter(h)
+
+	sender := testutils.ValidSuiAddress()
+	body := map[string]string{
+		"transactionKindBytes": "AQIDBA==",
+		"sender":               sender,
+	}
+
+	// First two requests must succeed.
+	for i := range h.cfg.RateLimitSenderPerMinute {
+		w := do(t, r, "POST", "/v1/sponsor", body, map[string]string{"X-API-Key": testutils.TestAPIKey})
+		if w.Code == http.StatusTooManyRequests {
+			t.Fatalf("request %d/%d was rate-limited too early", i+1, h.cfg.RateLimitSenderPerMinute)
+		}
+	}
+
+	// Third request must be rejected.
+	w := do(t, r, "POST", "/v1/sponsor", body, map[string]string{"X-API-Key": testutils.TestAPIKey})
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after sender limit, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := parseBody(t, w)
+	if resp["hint"] == nil {
+		t.Error("expected hint field in 429 response")
+	}
+}
+
+// TestPerSenderRateLimit_DifferentSendersHaveIndependentBuckets verifies that
+// two different wallet addresses do not share a rate limit bucket.
+func TestPerSenderRateLimit_DifferentSendersHaveIndependentBuckets(t *testing.T) {
+	gasPool := testutils.MockGasPoolServer(t)
+	suiRPC := testutils.MockSuiRPC(t)
+	h, rl := newTestHandlersWithRL(t)
+	h.dashi = NewDashiClient(gasPool.URL, "test-token", suiRPC.URL)
+	h.sui = NewSuiClient(suiRPC.URL, "")
+	h.cfg.RateLimitSenderPerMinute = 1 // only 1 request per sender per minute
+
+	flushRateLimitKeys(t, rl)
+	t.Cleanup(func() { flushRateLimitKeys(t, rl) })
+
+	r := newRouter(h)
+	auth := map[string]string{"X-API-Key": testutils.TestAPIKey}
+
+	sender1 := "0xaaaa1234aaaa1234aaaa1234aaaa1234aaaa1234aaaa1234aaaa1234aaaa1234"
+	sender2 := "0xbbbb1234bbbb1234bbbb1234bbbb1234bbbb1234bbbb1234bbbb1234bbbb1234"
+
+	// sender1 exhausts their limit.
+	do(t, r, "POST", "/v1/sponsor", map[string]string{"transactionKindBytes": "AQIDBA==", "sender": sender1}, auth)
+	w1 := do(t, r, "POST", "/v1/sponsor", map[string]string{"transactionKindBytes": "AQIDBA==", "sender": sender1}, auth)
+	if w1.Code != http.StatusTooManyRequests {
+		t.Fatalf("sender1: expected 429 after limit, got %d", w1.Code)
+	}
+
+	// sender2 must still be allowed — independent bucket.
+	w2 := do(t, r, "POST", "/v1/sponsor", map[string]string{"transactionKindBytes": "AQIDBA==", "sender": sender2}, auth)
+	if w2.Code == http.StatusTooManyRequests {
+		t.Fatalf("sender2 was blocked by sender1's rate limit — buckets are not independent")
+	}
+}

@@ -66,6 +66,10 @@ func (h *Handlers) SponsorTransaction(c *gin.Context) {
 		return
 	}
 
+	if !h.rl.CheckSender(c, req.Sender, h.cfg.RateLimitSenderPerMinute) {
+		return // CheckSender already wrote the 429 response
+	}
+
 	reservation, err := h.dashi.Reserve(c.Request.Context(), req.TransactionKindBytes, req.Sender)
 	if err != nil {
 		respondError(c, http.StatusBadGateway, ErrGasPoolUnavailable, err.Error())

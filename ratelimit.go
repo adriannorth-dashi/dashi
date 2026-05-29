@@ -159,6 +159,36 @@ func (rl *RateLimiter) PerKey(limitPerMinute int) gin.HandlerFunc {
 	}
 }
 
+// CheckSender enforces a per-sender-wallet rate limit. Called directly from the handler
+// after the request body has been parsed and the sender address is known.
+// Returns true if the request should be allowed, false if it should be rejected with 429.
+// On Redis errors it fails open (returns true) and logs a warning.
+func (rl *RateLimiter) CheckSender(c *gin.Context, sender string, limitPerMinute int) bool {
+	if rl == nil || limitPerMinute <= 0 {
+		return true
+	}
+
+	hash := apiKeyHash(sender) // SHA-256 so wallet address is never stored raw in Redis
+	allowed, _, err := rl.allow(c.Request.Context(), "sender:"+hash, limitPerMinute)
+	if err != nil {
+		slog.Warn("rate limiter: redis error (per-sender)", "err", err)
+		return true // fail open
+	}
+
+	if !allowed {
+		slog.Warn("rate limit exceeded: per-sender",
+			"sender", sender[:10]+"...", // log only a prefix — full address is PII
+			"limit", limitPerMinute,
+		)
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, APIError{
+			Error: "Rate limit exceeded",
+			Hint:  fmt.Sprintf("Maximum %d sponsor requests per minute per wallet", limitPerMinute),
+		})
+		return false
+	}
+	return true
+}
+
 // perKeyOrNoop returns rl.PerKey(limit) when rl is non-nil, or a no-op middleware otherwise.
 // This lets newRouter always inline per-route middleware regardless of whether
 // rate limiting is enabled — keeping the routing code free of nil checks.

@@ -29,6 +29,7 @@ services:
       LOG_LEVEL:               ${LOG_LEVEL:-info}
       RATE_LIMIT_PER_MINUTE:          ${RATE_LIMIT_PER_MINUTE:-60}
       RATE_LIMIT_POST_PER_MINUTE:     ${RATE_LIMIT_POST_PER_MINUTE:-30}
+      RATE_LIMIT_SENDER_PER_MINUTE:   ${RATE_LIMIT_SENDER_PER_MINUTE:-5}
       RATE_LIMIT_GLOBAL_PER_MINUTE:   ${RATE_LIMIT_GLOBAL_PER_MINUTE:-500}
       GASPOOL_URL:             http://gaspool:${GASPOOL_RPC_PORT:-9527}
       DATABASE_URL: postgres://${POSTGRES_USER:-gasstation}:${POSTGRES_PASSWORD:-secret}@postgres:5432/${POSTGRES_DB:-gasstation}

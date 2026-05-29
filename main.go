@@ -53,9 +53,10 @@ type Config struct {
 	DatabaseURL      string
 	RedisURL         string
 	// Rate limiting
-	RateLimitPerMinute     int // per-API-key limit for GET endpoints (default 60)
-	RateLimitPostPerMinute int // per-API-key limit for POST endpoints (default 30)
-	GlobalRateLimit        int // global request cap across all callers (default 500)
+	RateLimitPerMinute       int // per-API-key limit for GET endpoints (default 60)
+	RateLimitPostPerMinute   int // per-API-key limit for POST endpoints (default 30)
+	RateLimitSenderPerMinute int // per-sender-wallet limit for POST /v1/sponsor (default 5)
+	GlobalRateLimit          int // global request cap across all callers (default 500)
 }
 
 // newRouter constructs the Gin router with all routes and middleware wired up.
@@ -100,9 +101,10 @@ func loadConfig() Config {
 		APIKey:             getEnv("API_KEY", ""),
 		DatabaseURL:        getEnv("DATABASE_URL", ""),
 		RedisURL:           getEnv("REDIS_URL", "redis://redis:6379"),
-		RateLimitPerMinute:     getEnvInt("RATE_LIMIT_PER_MINUTE", 60),
-		RateLimitPostPerMinute: getEnvInt("RATE_LIMIT_POST_PER_MINUTE", 30),
-		GlobalRateLimit:        getEnvInt("RATE_LIMIT_GLOBAL_PER_MINUTE", 500),
+		RateLimitPerMinute:       getEnvInt("RATE_LIMIT_PER_MINUTE", 60),
+		RateLimitPostPerMinute:   getEnvInt("RATE_LIMIT_POST_PER_MINUTE", 30),
+		RateLimitSenderPerMinute: getEnvInt("RATE_LIMIT_SENDER_PER_MINUTE", 5),
+		GlobalRateLimit:          getEnvInt("RATE_LIMIT_GLOBAL_PER_MINUTE", 500),
 	}
 }
 
@@ -156,6 +158,7 @@ func main() {
 		slog.Info("rate limiter enabled",
 			"get_per_key_per_min", cfg.RateLimitPerMinute,
 			"post_per_key_per_min", cfg.RateLimitPostPerMinute,
+			"sender_per_min", cfg.RateLimitSenderPerMinute,
 			"global_per_min", cfg.GlobalRateLimit,
 		)
 	}
